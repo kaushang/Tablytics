@@ -10,7 +10,9 @@ function App() {
   const [selectedDomain, setSelectedDomain] = useState('');
   const [timeLimit, setTimeLimit] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isTrackingEnabled, setIsTrackingEnabled] = useState(true);
   const lastUpdateTime = useRef(Date.now());
+  const dropdownRef = useRef(null);
 
   // Function to get latest tab data
   const getTabData = () => {
@@ -30,7 +32,7 @@ function App() {
 
   useEffect(() => {
     // Load initial data from storage immediately
-    chrome.storage.local.get(['tabData', 'activeDomain', 'timeLimits'], (result) => {
+    chrome.storage.local.get(['tabData', 'activeDomain', 'timeLimits', 'isTrackingEnabled'], (result) => {
       if (result.tabData) {
         setTabData(result.tabData);
       }
@@ -39,6 +41,9 @@ function App() {
       }
       if (result.timeLimits) {
         setTimeLimits(result.timeLimits);
+      }
+      if (result.isTrackingEnabled !== undefined) {
+        setIsTrackingEnabled(result.isTrackingEnabled);
       }
       // After loading initial data, start real-time updates
       getTabData();
@@ -50,6 +55,20 @@ function App() {
     // Cleanup interval on unmount
     return () => clearInterval(interval);
   }, []);
+
+  // Add click outside listener to close dropdown
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsDropdownOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [dropdownRef]);
 
   const formatTime = (ms) => {
     const seconds = Math.floor(ms / 1000);
@@ -70,6 +89,18 @@ function App() {
         setTabData({});
         setActiveDomain(null);
         setTimeLimits({});
+      }
+    });
+  };
+
+  const toggleTracking = () => {
+    const newTrackingState = !isTrackingEnabled;
+    chrome.runtime.sendMessage({ 
+      type: 'TOGGLE_TRACKING', 
+      enabled: newTrackingState 
+    }, (response) => {
+      if (response && response.success) {
+        setIsTrackingEnabled(newTrackingState);
       }
     });
   };
@@ -110,24 +141,13 @@ function App() {
     });
   };
 
-  const handleSelectFocus = () => {
-    setIsDropdownOpen(true);
-  };
-
-  const handleSelectBlur = () => {
-    // Small delay to allow click events to process
-    setTimeout(() => {
-      setIsDropdownOpen(false);
-    }, 100);
-  };
-
-  const handleSelectChange = (e) => {
-    setSelectedDomain(e.target.value);
-    setIsDropdownOpen(false);
-  };
-
-  const handleSelectMouseDown = () => {
+  const toggleDropdown = () => {
     setIsDropdownOpen(!isDropdownOpen);
+  };
+
+  const handleDomainSelect = (domain) => {
+    setSelectedDomain(domain);
+    setIsDropdownOpen(false);
   };
 
   const sortedTabs = Object.entries(tabData)
@@ -152,77 +172,118 @@ function App() {
         </div>
       </div>
 
+      {!isTrackingEnabled && (
+        <div className="tracking-paused-notice">
+          <p>Tracking is currently paused. No tab is being tracked.</p>
+        </div>
+      )}
+
       {showSettings && (
         <div className="settings-card">
-          <h2>Time Limits</h2>
-          <div className="settings-form">
-            <div className="domain-select-container">
-              <div className="domain-select-wrapper">
-                <select 
-                  value={selectedDomain} 
-                  onChange={handleSelectChange}
-                  onFocus={handleSelectFocus}
-                  onBlur={handleSelectBlur}
-                  onMouseDown={handleSelectMouseDown}
-                  className="domain-select"
-                >
-                  <option value="">Select a domain</option>
-                  {Object.keys(tabData).map(domain => (
-                    <option key={domain} value={domain}>
-                      <div className="domain-option">
-                        <img 
-                          src={`https://www.google.com/s2/favicons?domain=${domain}&sz=32`}
-                          alt={`${domain} icon`}
-                          className="domain-favicon"
-                        />
-                        {domain}
-                      </div>
-                    </option>
-                  ))}
-                </select>
-                <div className={`select-arrow ${isDropdownOpen ? 'open' : ''}`}>▼</div>
-              </div>
+          <div className="settings-section">
+            <h2>Tracking</h2>
+            <div className="toggle-container">
+              <span className="toggle-label">Enable Tab Tracking</span>
+              <label className="toggle-switch">
+                <input 
+                  type="checkbox" 
+                  checked={isTrackingEnabled} 
+                  onChange={toggleTracking}
+                />
+                <span className="toggle-slider"></span>
+              </label>
             </div>
-            <div className="time-input-container">
-              <input
-                type="number"
-                value={timeLimit}
-                onChange={(e) => setTimeLimit(e.target.value)}
-                placeholder="Time limit (minutes)"
-                className="time-input"
-                min="1"
-              />
-            </div>
-            <button 
-              onClick={handleSetTimeLimit} 
-              className="set-limit-button"
-              disabled={!selectedDomain || !timeLimit}
-            >
-              Set Limit
-            </button>
           </div>
-          <div className="time-limits-list">
-            {Object.entries(timeLimits).map(([domain, limit]) => (
-              <div key={domain} className="time-limit-item">
-                <div className="time-limit-domain">
-                  <img 
-                    src={`https://www.google.com/s2/favicons?domain=${domain}&sz=32`}
-                    alt={`${domain} icon`}
-                    className="domain-favicon"
-                  />
-                  <span>{domain}</span>
+          
+          <div className="settings-section">
+            <h2>Time Limits</h2>
+            <div className="settings-form">
+              {/* Custom Domain Dropdown */}
+              <div className="custom-dropdown-container" ref={dropdownRef}>
+                <div 
+                  className="custom-dropdown-header" 
+                  onClick={toggleDropdown}
+                >
+                  {selectedDomain ? (
+                    <div className="selected-domain-display">
+                      <img 
+                        src={`https://www.google.com/s2/favicons?domain=${selectedDomain}&sz=32`}
+                        alt={`${selectedDomain} icon`}
+                        className="domain-favicon"
+                      />
+                      <span>{selectedDomain}</span>
+                    </div>
+                  ) : (
+                    <span className="placeholder">Select a domain</span>
+                  )}
+                  <div className={`dropdown-arrow ${isDropdownOpen ? 'open' : ''}`}>▼</div>
                 </div>
-                <div className="time-limit-details">
-                  <span className="time-limit-value">{formatTime(limit)}</span>
-                  <button 
-                    onClick={() => handleRemoveTimeLimit(domain)}
-                    className="remove-limit-button"
-                  >
-                    Remove
-                  </button>
-                </div>
+                
+                {isDropdownOpen && (
+                  <div className="custom-dropdown-list">
+                    {Object.keys(tabData).length > 0 ? (
+                      Object.keys(tabData).map(domain => (
+                        <div 
+                          key={domain} 
+                          className="dropdown-item" 
+                          onClick={() => handleDomainSelect(domain)}
+                        >
+                          <img 
+                            src={`https://www.google.com/s2/favicons?domain=${domain}&sz=32`}
+                            alt={`${domain} icon`}
+                            className="domain-favicon"
+                          />
+                          <span>{domain}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="dropdown-empty">No domains available</div>
+                    )}
+                  </div>
+                )}
               </div>
-            ))}
+              
+              <div className="time-input-container">
+                <input
+                  type="number"
+                  value={timeLimit}
+                  onChange={(e) => setTimeLimit(e.target.value)}
+                  placeholder="Time limit (minutes)"
+                  className="time-input"
+                  min="1"
+                />
+              </div>
+              <button 
+                onClick={handleSetTimeLimit} 
+                className="set-limit-button"
+                disabled={!selectedDomain || !timeLimit}
+              >
+                Set Limit
+              </button>
+            </div>
+            <div className="time-limits-list">
+              {Object.entries(timeLimits).map(([domain, limit]) => (
+                <div key={domain} className="time-limit-item">
+                  <div className="time-limit-domain">
+                    <img 
+                      src={`https://www.google.com/s2/favicons?domain=${domain}&sz=32`}
+                      alt={`${domain} icon`}
+                      className="domain-favicon"
+                    />
+                    <span>{domain}</span>
+                  </div>
+                  <div className="time-limit-details">
+                    <span className="time-limit-value">{formatTime(limit)}</span>
+                    <button 
+                      onClick={() => handleRemoveTimeLimit(domain)}
+                      className="remove-limit-button"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -274,4 +335,4 @@ function App() {
   )
 }
 
-export default App 
+export default App;
