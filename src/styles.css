@@ -1,8 +1,9 @@
 :root {
   /* Colors */
-  --primary-color: #4299E1;
+  --primary-color: #3a86ff;
   --bg-color: #f7fafc;
-  --text-color: #2d3748;
+  --text-color: #11151b;
+  --sub-head-color: rgb(126, 126, 126);
   --border-color: #e2e8f0;
   --card-bg: #ffffff;
   --progress-bg: #edf2f7;
@@ -70,10 +71,11 @@ body {
 .title {
   margin: 0;
   font-size: var(--font-size-xl);
-  color: #1a73e8;
+  color: var(--text-color);
 }
 
 .active-tabs {
+  color: var(--text-color);
   font-size: var(--font-size-lg);
   align-self: center;
   font-weight: 700;
@@ -116,8 +118,7 @@ body {
 }
 
 .settings-card h2 {
-  margin: 0 0 15px 0;
-  font-size: var(--font-size-lg);
+  margin: 0px;
   color: var(--text-color);
   font-weight: 600;
 }
@@ -150,13 +151,13 @@ body {
 
 .set-limit-button {
   width: 100%;
-  padding: 10px;
+  padding: 8px;
   border: none;
   border-radius: 6px;
   background-color: var(--success-color);
   color: white;
   cursor: pointer;
-  font-weight: 500;
+  font-weight: 600;
   transition: background-color 0.2s;
 }
 
@@ -173,7 +174,6 @@ body {
 .time-limits-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
   max-height: 200px;
   overflow-y: auto;
   padding-right: 4px;
@@ -202,13 +202,14 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 10px;
+  margin-top: 8px;
   background-color: var(--bg-color);
   border-radius: 6px;
   transition: background-color 0.2s;
 }
 
 .time-limit-item:hover {
-  background-color: #edf2f7;
+  background-color: #f0f0f0;
 }
 
 .time-limit-domain {
@@ -288,7 +289,7 @@ body {
 }
 
 .tab-item.active {
-  background-color: #e8f0fe;
+  background-color: #f0f0f0;
 }
 
 .tab-header {
@@ -349,8 +350,6 @@ body {
 
 .settings-section {
   margin-bottom: 20px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid #e0e0e0;
 }
 
 .settings-section:last-child {
@@ -361,9 +360,17 @@ body {
 
 .toggle-container {
   display: flex;
+  align-items: start;
+  /* justify-content: space-between; */
+  flex-direction: column;
+  margin: 30px 0 0 0;
+}
+.inside-toggle-container {
+  display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 10px 0;
+  flex-direction: row;
+  width: 100%;
 }
 
 .toggle-label {
@@ -408,7 +415,7 @@ body {
 }
 
 input:checked + .toggle-slider {
-  background-color: #4caf50;
+  background-color: var(--text-color);
 }
 
 input:focus + .toggle-slider {
@@ -436,6 +443,7 @@ input:checked + .toggle-slider:before {
 }
 
 .custom-dropdown-header {
+  margin-bottom: -6px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -528,4 +536,273 @@ input:checked + .toggle-slider:before {
   color: var(--placeholder-color);
   font-style: italic;
   text-align: center;
+}
+.limit-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.strict-limit-button {
+  background-color: var(--danger-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background-color 0.2s;
+}
+
+.strict-limit-button:hover {
+  background-color: var(--danger-hover);
+}
+
+.strict-limit-button:disabled {
+  background-color: #ffcccc;
+  cursor: not-allowed;
+}
+
+.strict-badge {
+  margin-left: 6px;
+  color: #ff3333;
+}
+
+.time-limit-indicator.strict {
+  color: #ff3333;
+  font-weight: bold;
+}
+.strict-mode-container {
+  margin: 10px 0;
+}
+
+.strict-mode-description {
+  margin-top: 5px;
+  font-size: 12px;
+  color: #666;
+  font-style: italic;
+}
+/* Add these new styles to your existing styles.css */
+
+/* Time Limit Card Styling */
+.time-limit-card {
+  background-color: #fff;
+  margin-bottom: 20px;
+}
+
+.time-limit-card h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+  margin-top: 0;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: #333;
+}
+
+.form-input {
+  width: 93%;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.form-help-text {
+  font-size: 12px;
+  color: #666;
+  margin-top: 4px;
+  margin-bottom: 0;
+}
+
+.custom-dropdown-container {
+  position: relative;
+  width: 100%;
+}
+
+.custom-dropdown-header {
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background-color: white;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.placeholder {
+  color: #999;
+}
+
+.dropdown-arrow {
+  color: #666;
+  font-size: 12px;
+  transition: transform 0.2s ease;
+}
+
+.dropdown-arrow.open {
+  transform: rotate(180deg);
+}
+
+.custom-dropdown-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  margin-top: 4px;
+  z-index: 10;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.dropdown-item {
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.dropdown-item:hover {
+  background-color: #f5f5f5;
+}
+
+.domain-favicon {
+  width: 16px;
+  height: 16px;
+  margin-right: 8px;
+}
+
+.selected-domain-display {
+  display: flex;
+  align-items: center;
+}
+
+.strict-toggle-container {
+  padding: 10px;
+  border: 1px solid #dddddd;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Modern Toggle Switch */
+.modern-toggle {
+  position: relative;
+  display: inline-block;
+  width: 52px;
+  height: 26px;
+  margin-bottom: 8px;
+}
+
+.modern-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.modern-toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  border-radius: 34px;
+}
+
+.modern-toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked + .modern-toggle-slider {
+  background-color: var(--text-color);
+}
+
+input:focus + .modern-toggle-slider {
+  box-shadow: 0 0 1px #3a86ff;
+}
+
+input:checked + .modern-toggle-slider:before {
+  transform: translateX(26px);
+}
+
+.set-time-limit-button {
+  width: 100%;
+  padding: 12px;
+  background-color: #000000;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.set-time-limit-button:hover {
+  background-color: #242424;
+}
+
+.set-time-limit-button:disabled {
+  background-color: #4d4d4d;
+  cursor: not-allowed;
+}
+
+/* Current Time Limits Section */
+.time-limits-list h3 {
+  font-size: 16px;
+  margin-bottom: 12px;
+}
+
+.time-limit-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #eee;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  background-color: white;
+}
+
+.time-limit-domain {
+  display: flex;
+  align-items: center;
+}
+
+.time-limit-value {
+  margin-right: 12px;
+  font-weight: 500;
+}
+
+.strict-badge {
+  margin-left: 8px;
+  font-size: 12px;
+}
+
+.no-limits-message {
+  color: #666;
 }
