@@ -45,26 +45,42 @@ Whether you're studying, working, or just browsing — Tablytics helps you stay 
 
 ---
 
-## ⚙️ How to Use
+## 📂 How to Install the Extension
 
-1. **Install the Extension**  
-   Load the extension into Chrome using `chrome://extensions` → Enable *Developer Mode* → *Load Unpacked* → Select your extension folder.
+1. **Download the Extension**  
+   Download the repository as a zip and then extract it in your computer.
 
-2. **Enable Tracking**  
-   Toggle the "Enable Tab Tracking" switch from the **Settings** panel.
+2. **Install the Extension**  
+   Load the extension into Chrome:
+   - Type `chrome://extensions` in the search bar to open the Extensions settings.
+   - Enable **Developer Mode**.
+   - Select **Load Unpacked**.
+   - Navigate to the extracted folder.
+   - Open your extension folder → Select **dist** folder.
 
-3. **Set Time Limits**  
+2. **All Set**  
+   You're all set to use the extension.
+   
+---
+
+## ⚙️ How to use
+
+1. **Set Time Limits**  
    - Go to **Settings > Set Website Time Limit**.
    - Select a website from the dropdown.
    - Enter time in minutes.
    - (Optional) Enable **Strict Enforcement** to auto-close the tab.
 
-4. **Monitor Your Time**  
+2. **Monitor Your Time**  
    - View the total time tracked and time per site from the **Dashboard**.
    - Tabs will be listed with progress bars.
 
-5. **Reset Anytime**  
+
+3. **Reset Anytime**  
    - Click the **Reset** button to clear all current time tracking.
+ 
+4. **Enable or Disable Tracking**  
+   - Enable the **Enable time tracking** button to allow the extension track your time and Disable the button if you don't want the Extension track your time.
 
 ---
 
