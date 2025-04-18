@@ -1,54 +1,81 @@
-# React + TypeScript + Vite
+# Tablytics - Tab Time Tracker ⏱️
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Want Analytics about your time spent on tabs?  **Tablytics** is a lightweight and user-friendly Chrome extension that helps users track the amount of time spent on different browser tabs. It provides valuable insights and helps users build healthier digital habits, boost productivity, and stay focused.
 
-Currently, two official plugins are available:
+## 🚀 What Does It Do?
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Tracks total browsing time and per-tab usage.
+- Lets users set time limits for specific websites.
+- Supports *Strict Enforcement* to automatically close tabs after time is up.
+- Notifies users when their set time limit is reached.
+- Provides an option to reset all tracked time.
+- Allows enabling/disabling time tracking.
 
-## Expanding the ESLint configuration
+Whether you're studying, working, or just browsing — Tablytics helps you stay in control of your time.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+---
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
-```
+## 🔥 Features
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+- ⏲️ **Track Browsing Time**  
+  View total time spent and how much time you've used on each active tab.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+- ⛔ **Set Time Limits**  
+  Choose a website and set how long you want to stay on it.
 
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
-```
+- 🔒 **Strict Enforcement**  
+  Enable this feature to automatically close the tab when time is up.
+
+- 🔔 **Time Limit Notifications**  
+  Get notified when you've reached your time limit on a site.
+
+- 🔁 **Reset Time**  
+  Start fresh at any time by resetting all tracked time back to 0.
+
+- 🎛️ **Toggle Tracking**  
+  You can enable or disable tracking with a single switch.
+
+---
+
+## 🧑‍🏫 Use Cases
+
+- **Students Studying**: Track how long you’ve studied and receive notifications when your planned session ends.
+- **Break Monitoring**: Limit time on entertainment sites like YouTube or Netflix during breaks.
+- **Self-awareness**: Understand where your time goes and become more mindful of your browsing habits.
+
+---
+
+## ⚙️ How to Use
+
+1. **Install the Extension**  
+   Load the extension into Chrome using `chrome://extensions` → Enable *Developer Mode* → *Load Unpacked* → Select your extension folder.
+
+2. **Enable Tracking**  
+   Toggle the "Enable Tab Tracking" switch from the **Settings** panel.
+
+3. **Set Time Limits**  
+   - Go to **Settings > Set Website Time Limit**.
+   - Select a website from the dropdown.
+   - Enter time in minutes.
+   - (Optional) Enable **Strict Enforcement** to auto-close the tab.
+
+4. **Monitor Your Time**  
+   - View the total time tracked and time per site from the **Dashboard**.
+   - Tabs will be listed with progress bars.
+
+5. **Reset Anytime**  
+   - Click the **Reset** button to clear all current time tracking.
+
+---
+
+## 🛠️ Built With
+
+- HTML, CSS, JavaScript, ReactJS
+- Chrome Extension APIs
+- Local Storage for data persistence
+
+---
+
+## 📬 Feedback
+
+If you like this extension or have any suggestions for improvements, feel free to open an issue or drop a ⭐ on the repo!

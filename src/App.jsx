@@ -1,5 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-import { FaClock, FaTrash, FaCog } from "react-icons/fa";
+import {
+  FaClock,
+  FaTrash,
+  FaCog,
+  FaChartLine,
+  FaExclamationTriangle,
+} from "react-icons/fa";
 import "./styles.css";
 
 function App() {
@@ -13,6 +19,7 @@ function App() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isTrackingEnabled, setIsTrackingEnabled] = useState(true);
   const [isStrictMode, setIsStrictMode] = useState(false);
+  const [showDashboard, setShowDashboard] = useState(true);
   const lastUpdateTime = useRef(Date.now());
   const dropdownRef = useRef(null);
 
@@ -206,34 +213,136 @@ function App() {
     setIsDropdownOpen(false);
   };
 
+  const totalTimeTracked = Object.values(tabData).reduce((a, b) => a + b, 0);
+  const websitesTracked = Object.keys(tabData).length;
+  const websitesOverLimit = Object.entries(timeLimits).filter(
+    ([domain, limit]) => tabData[domain] && tabData[domain] >= limit
+  ).length;
+
   const sortedTabs = Object.entries(tabData)
     .sort(([, a], [, b]) => b - a)
     .slice(0, 10);
 
-  const totalTime = Object.values(tabData).reduce((a, b) => a + b, 0);
-
   return (
     <div className="app-container">
-      <div className="header">
+      <div className="nav">
         <h1 className="title">Tablytics</h1>
-        <div className="header-buttons">
-          <button
-            className="settings-button"
-            onClick={() => setShowSettings(!showSettings)}
-          >
-            <FaCog />
-            Settings
-          </button>
-          <button className="clear-button" onClick={clearData}>
-            <FaTrash />
-            Reset
-          </button>
+        <div className="header">
+          <div className="header-buttons">
+            <button
+              className="nav-button"
+              onClick={() => {
+                setShowDashboard(true);
+                setShowSettings(false);
+              }}
+            >
+              <FaChartLine />
+              Dashboard
+            </button>
+            <button
+              className="nav-button"
+              onClick={() => {
+                setShowDashboard(false);
+                setShowSettings(true);
+              }}
+            >
+              <FaCog />
+              Settings
+            </button>
+          </div>
         </div>
       </div>
 
       {!isTrackingEnabled && (
         <div className="tracking-paused-notice">
           <p>Tracking is currently paused. No tab is being tracked.</p>
+        </div>
+      )}
+
+      {showDashboard && (
+        <div className="dashboard-container">
+          <div className="stats-card-container">
+            <div className="dashboard-card">
+              <h2>Total Time Tracked</h2>
+              <div className="dashboard-value">
+                <FaClock className="dashboard-icon" />
+                <span>{formatTime(totalTimeTracked)}</span>
+              </div>
+            </div>
+
+            <div className="dashboard-card">
+              <h2>Websites Tracked</h2>
+              <div className="dashboard-value">
+                <FaChartLine className="dashboard-icon" />
+                <span>{websitesTracked}</span>
+              </div>
+            </div>
+
+            <div className="dashboard-card">
+              <h2>Websites Over Limit</h2>
+              <div className="dashboard-value">
+                <FaExclamationTriangle className="dashboard-icon warning" />
+                <span>{websitesOverLimit}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="stats-card">
+            <div className="stats-header">
+              <h2 className="active-tabs">Active Tabs</h2>
+              <div className="total-time">
+                <FaClock />
+                {formatTime(totalTimeTracked)}
+              </div>
+            </div>
+
+            <ul className="tabs-list">
+              {sortedTabs.map(([domain, time]) => (
+                <li
+                  key={domain}
+                  className={`tab-item ${
+                    domain === activeDomain ? "active" : ""
+                  }`}
+                >
+                  <div className="tab-header">
+                    <div className="domain-info">
+                      <img
+                        src={`https://www.google.com/s2/favicons?domain=${domain}&sz=32`}
+                        alt={`${domain} icon`}
+                        className="favicon"
+                        onError={(e) => {
+                          e.target.src =
+                            'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🌐</text></svg>';
+                        }}
+                      />
+                      <span className="domain">{domain}</span>
+                    </div>
+                    <span className="time">{formatTime(time)}</span>
+                  </div>
+                  <div className="progress-container">
+                    <div
+                      className="progress-bar"
+                      style={{ width: `${(time / totalTimeTracked) * 100}%` }}
+                    />
+                  </div>
+                  {timeLimits[domain] && (
+                    <div
+                      className={`time-limit-indicator ${
+                        strictLimits[domain] ? "strict" : ""
+                      } ${
+                        tabData[domain] >= timeLimits[domain]
+                          ? "over-limit"
+                          : ""
+                      }`}
+                    >
+                      Limit: {formatTime(timeLimits[domain])}
+                      {strictLimits[domain] && " (Strict)"}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       )}
 
@@ -349,7 +458,7 @@ function App() {
                   </label>
                 </div>
                 <p className="form-help-text">
-                  When enabled, the browser extension will close the website <br></br>
+                  When enabled, the browser extension will close the website
                   when you reach the limit
                 </p>
               </div>
@@ -364,97 +473,60 @@ function App() {
             </div>
 
             <div className="time-limits-list">
-              <span className="toggle-label">Current Time Limits</span>
-              {Object.entries(timeLimits).length > 0 ? (
-                Object.entries(timeLimits).map(([domain, limit]) => (
-                  <div key={domain} className="time-limit-item">
-                    <div className="time-limit-domain">
-                      <img
-                        src={`https://www.google.com/s2/favicons?domain=${domain}&sz=32`}
-                        alt={`${domain} icon`}
-                        className="domain-favicon"
-                      />
-                      <span>{domain}</span>
-                      {strictLimits[domain] && (
-                        <span
-                          className="strict-badge"
-                          title="Strict limit - tabs will close automatically"
-                        >
-                          ⚠️
+              <div className="time-limit-item">
+                <span className="toggle-label">Current Time Limits</span>
+                {Object.entries(timeLimits).length > 0 ? (
+                  Object.entries(timeLimits).map(([domain, limit]) => (
+                    <div key={domain} className="current-limit">
+                      <div className="time-limit-domain">
+                        <img
+                          src={`https://www.google.com/s2/favicons?domain=${domain}&sz=32`}
+                          alt={`${domain} icon`}
+                          className="domain-favicon"
+                        />
+                        <span>{domain}</span>
+                        {strictLimits[domain] && (
+                          <span
+                            className="strict-badge"
+                            title="Strict limit - tabs will close automatically"
+                          >
+                            ⚠️
+                          </span>
+                        )}
+                      </div>
+                      <div className="time-limit-details">
+                        <span className="time-limit-value">
+                          {formatTime(limit)}
                         </span>
-                      )}
+                        <button
+                          onClick={() => handleRemoveTimeLimit(domain)}
+                          className="remove-limit-button"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
-                    <div className="time-limit-details">
-                      <span className="time-limit-value">
-                        {formatTime(limit)}
-                      </span>
-                      <button
-                        onClick={() => handleRemoveTimeLimit(domain)}
-                        className="remove-limit-button"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="no-limits-message">No time limits set</p>
-              )}
+                  ))
+                ) : (
+                  <p className="no-limits-message">No time limits set</p>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="settings-sections">
+            <div className="time-limit-card">
+              <span className="form-label">Reset Time</span>
+              <button className="clear-button" onClick={clearData}>
+                <FaTrash />
+                &nbsp; Reset
+              </button>
+              <p className="form-help-text reset">
+                Resets all the time counted on all the sites to 0
+              </p>
             </div>
           </div>
         </div>
       )}
-
-      <div className="stats-card">
-        <div className="stats-header">
-          <h2 className="active-tabs">Active Tabs</h2>
-          <div className="total-time">
-            <FaClock />
-            {formatTime(totalTime)}
-          </div>
-        </div>
-
-        <ul className="tabs-list">
-          {sortedTabs.map(([domain, time]) => (
-            <li
-              key={domain}
-              className={`tab-item ${domain === activeDomain ? "active" : ""}`}
-            >
-              <div className="tab-header">
-                <div className="domain-info">
-                  <img
-                    src={`https://www.google.com/s2/favicons?domain=${domain}&sz=32`}
-                    alt={`${domain} icon`}
-                    className="favicon"
-                    onError={(e) => {
-                      e.target.src =
-                        'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🌐</text></svg>';
-                    }}
-                  />
-                  <span className="domain">{domain}</span>
-                </div>
-                <span className="time">{formatTime(time)}</span>
-              </div>
-              <div className="progress-container">
-                <div
-                  className="progress-bar"
-                  style={{ width: `${(time / totalTime) * 100}%` }}
-                />
-              </div>
-              {timeLimits[domain] && (
-                <div
-                  className={`time-limit-indicator ${
-                    strictLimits[domain] ? "strict" : ""
-                  }`}
-                >
-                  Limit: {formatTime(timeLimits[domain])}
-                  {strictLimits[domain] && " (Strict)"}
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      </div>
     </div>
   );
 }
