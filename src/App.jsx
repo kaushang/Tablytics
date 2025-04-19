@@ -22,6 +22,8 @@ function App() {
   const [showDashboard, setShowDashboard] = useState(true);
   const lastUpdateTime = useRef(Date.now());
   const dropdownRef = useRef(null);
+  const dashboardBtn = useRef(null);
+  const settingsBtn = useRef(null);
 
   // Function to get latest tab data
   const getTabData = () => {
@@ -230,20 +232,26 @@ function App() {
         <div className="header">
           <div className="header-buttons">
             <button
-              className="nav-button"
+              ref={dashboardBtn}
+              className="nav-button active"
               onClick={() => {
                 setShowDashboard(true);
                 setShowSettings(false);
+                dashboardBtn.current.classList.add("active");
+                settingsBtn.current.classList.remove("active");
               }}
             >
               <FaChartLine />
               Dashboard
             </button>
             <button
+              ref={settingsBtn}
               className="nav-button"
               onClick={() => {
                 setShowDashboard(false);
                 setShowSettings(true);
+                dashboardBtn.current.classList.remove("active");
+                settingsBtn.current.classList.add("active");
               }}
             >
               <FaCog />
@@ -316,6 +324,20 @@ function App() {
                         }}
                       />
                       <span className="domain">{domain}</span>
+                      {timeLimits[domain] && (
+                        <div
+                          className={`time-limit-indicator ${
+                            strictLimits[domain] ? "strict" : ""
+                          } ${
+                            tabData[domain] >= timeLimits[domain]
+                              ? "over-limit"
+                              : ""
+                          }`}
+                        >
+                          Limit: {formatTime(timeLimits[domain])}
+                          {strictLimits[domain] && " (Strict)"}
+                        </div>
+                      )}
                     </div>
                     <span className="time">{formatTime(time)}</span>
                   </div>
@@ -325,20 +347,6 @@ function App() {
                       style={{ width: `${(time / totalTimeTracked) * 100}%` }}
                     />
                   </div>
-                  {timeLimits[domain] && (
-                    <div
-                      className={`time-limit-indicator ${
-                        strictLimits[domain] ? "strict" : ""
-                      } ${
-                        tabData[domain] >= timeLimits[domain]
-                          ? "over-limit"
-                          : ""
-                      }`}
-                    >
-                      Limit: {formatTime(timeLimits[domain])}
-                      {strictLimits[domain] && " (Strict)"}
-                    </div>
-                  )}
                 </li>
               ))}
             </ul>
@@ -347,15 +355,11 @@ function App() {
       )}
 
       {showSettings && (
-        <div className="settings-card">
+        <div>
           <div className="settings-section">
-            <h2>Tracking Options</h2>
-            <p className="form-help-text">
-              Configure how website tracking works
-            </p>
             <div className="toggle-container">
               <div className="inside-toggle-container">
-                <span className="toggle-label">Enable Tab Tracking</span>
+                <h2 className="toggle-label">Enable Tab Tracking</h2>
                 <label className="toggle-switch">
                   <input
                     type="checkbox"
