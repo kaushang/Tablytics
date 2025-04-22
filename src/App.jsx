@@ -5,8 +5,14 @@ import {
   FaCog,
   FaChartLine,
   FaExclamationTriangle,
+  // FaPieChart,
+  FaBars,
+  FaTimes,
+  FaChartPie,
 } from "react-icons/fa";
+import PieChart from "./PieChart";
 import "./styles.css";
+import { IoMdRefresh } from "react-icons/io";
 
 function App() {
   const [tabData, setTabData] = useState({});
@@ -14,16 +20,18 @@ function App() {
   const [timeLimits, setTimeLimits] = useState({});
   const [strictLimits, setStrictLimits] = useState({});
   const [showSettings, setShowSettings] = useState(false);
+  const [showDashboard, setShowDashboard] = useState(true);
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [selectedDomain, setSelectedDomain] = useState("");
   const [timeLimit, setTimeLimit] = useState("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isTrackingEnabled, setIsTrackingEnabled] = useState(true);
   const [isStrictMode, setIsStrictMode] = useState(false);
-  const [showDashboard, setShowDashboard] = useState(true);
   const lastUpdateTime = useRef(Date.now());
   const dropdownRef = useRef(null);
-  const dashboardBtn = useRef(null);
-  const settingsBtn = useRef(null);
+  const menuRef = useRef(null);
+  const [count, setCount] = useState(0);
 
   // Function to get latest tab data
   const getTabData = () => {
@@ -225,39 +233,90 @@ function App() {
     .sort(([, a], [, b]) => b - a)
     .slice(0, 10);
 
+  // Prepare data for the pie chart - format data properly for PieChart component
+  const pieChartData = Object.entries(tabData)
+    .map(([domain, time]) => ({
+      domain,
+      time,
+    }))
+    .sort((a, b) => b.time - a.time)
+    .slice(0, 8); // Limit to top 8 to prevent overcrowding the chart
+
+  // Handle navigation menu clicks
+  const handleNavigation = (section) => {
+    setShowDashboard(false);
+    setShowAnalytics(false);
+    setShowSettings(false);
+    setIsMenuOpen(false);
+
+    if (section === "dashboard") {
+      setShowDashboard(true);
+    } else if (section === "analytics") {
+      setShowAnalytics(true);
+    } else if (section === "settings") {
+      setShowSettings(true);
+    }
+  };
+
+  // Click outside menu to close
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(event.target) &&
+        !event.target.classList.contains("menu-toggle")
+      ) {
+        setIsMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [menuRef]);
+
+  function refresh() {
+    setCount(count + 1);
+  }
+
   return (
     <div className="app-container">
       <div className="nav">
         <h1 className="title">Tablytics</h1>
-        <div className="header">
-          <div className="header-buttons">
-            <button
-              ref={dashboardBtn}
-              className="nav-button active"
-              onClick={() => {
-                setShowDashboard(true);
-                setShowSettings(false);
-                dashboardBtn.current.classList.add("active");
-                settingsBtn.current.classList.remove("active");
-              }}
-            >
-              <FaChartLine />
-              Dashboard
-            </button>
-            <button
-              ref={settingsBtn}
-              className="nav-button"
-              onClick={() => {
-                setShowDashboard(false);
-                setShowSettings(true);
-                dashboardBtn.current.classList.remove("active");
-                settingsBtn.current.classList.add("active");
-              }}
-            >
-              <FaCog />
-              Settings
-            </button>
-          </div>
+        <button
+          className="menu-toggle"
+          onClick={() => setIsMenuOpen(!isMenuOpen)}
+          aria-label="Toggle navigation menu"
+        >
+          {isMenuOpen ? <FaTimes /> : <FaBars />}
+        </button>
+      </div>
+
+      {/* Sliding menu */}
+      <div className={`slide-menu ${isMenuOpen ? "open" : ""}`} ref={menuRef}>
+        <div className="menu-items">
+          <button
+            className={`menu-item ${showDashboard ? "active" : ""}`}
+            onClick={() => handleNavigation("dashboard")}
+          >
+            <FaChartLine />
+            <span>Dashboard</span>
+          </button>
+          <button
+            className={`menu-item ${showAnalytics ? "active" : ""}`}
+            onClick={() => handleNavigation("analytics")}
+          >
+            <FaChartPie />
+            <span>Analytics</span>
+          </button>
+          <button
+            className={`menu-item ${showSettings ? "active" : ""}`}
+            onClick={() => handleNavigation("settings")}
+          >
+            <FaCog />
+            <span>Settings</span>
+          </button>
         </div>
       </div>
 
@@ -266,7 +325,6 @@ function App() {
           <p>Tracking is currently paused. No tab is being tracked.</p>
         </div>
       )}
-
       {showDashboard && (
         <div className="dashboard-container">
           <div className="stats-card-container">
@@ -346,6 +404,66 @@ function App() {
                       className="progress-bar"
                       style={{ width: `${(time / totalTimeTracked) * 100}%` }}
                     />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {/* Analytics section with pie chart */}
+      {showAnalytics && (
+        <div className="analytics-container">
+          {pieChartData.length > 0 && (
+            <div className="stats-card">
+              <div className="stats-header">
+                <h2 className="active-tabs">Time Distribution</h2>
+                <div className="timeNrefresh">
+                  <div className="total-time">
+                    {formatTime(totalTimeTracked)}
+                  </div>
+                  <button className="refreshBtn" onClick={refresh}>
+                    {" "}
+                    <IoMdRefresh />
+                  </button>
+                </div>
+              </div>
+              <div className="pie-chart-wrapper" style={{ height: "400px" }}>
+                <PieChart
+                  data={pieChartData}
+                  title="Website Time Distribution"
+                  refresh={count}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="stats-card">
+            <div className="stats-header">
+              <h2 className="active-tabs">Top Websites by Time</h2>
+            </div>
+            <ul className="analytics-list">
+              {sortedTabs.map(([domain, time], index) => (
+                <li key={domain} className="analytics-item">
+                  <div className="rank">{index + 1}</div>
+                  <div className="domain-info">
+                    <img
+                      src={`https://www.google.com/s2/favicons?domain=${domain}&sz=32`}
+                      alt={`${domain} icon`}
+                      className="favicon"
+                      onError={(e) => {
+                        e.target.src =
+                          'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🌐</text></svg>';
+                      }}
+                    />
+                    <span className="domain">{domain}</span>
+                  </div>
+                  <div className="time-info">
+                    <span className="time">{formatTime(time)}</span>
+                    <span className="percentage">
+                      ({Math.round((time / totalTimeTracked) * 100)}%)
+                    </span>
                   </div>
                 </li>
               ))}
