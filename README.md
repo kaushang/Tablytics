@@ -10,6 +10,8 @@ Want Analytics about your time spent on tabs?  **Tablytics** is a lightweight an
 - Notifies users when their set time limit is reached.
 - Provides an option to reset all tracked time.
 - Allows enabling/disabling time tracking.
+- Supports **Dark Mode and Light Mode** for user preference.
+- Offers a dedicated **Analytics Tab** to visualize your tab usage.
 
 Whether you're studying, working, or just browsing — Tablytics helps you stay in control of your time.
 
@@ -33,7 +35,13 @@ Whether you're studying, working, or just browsing — Tablytics helps you stay 
   Start fresh at any time by resetting all tracked time back to 0.
 
 - 🎛️ **Toggle Tracking**  
-  You can enable or disable tracking with a single switch.
+  Enable or disable tracking with a single switch.
+
+- 🌙 **Dark & Light Mode**  
+  Choose between a modern dark theme or a classic light theme for comfortable viewing.
+
+- 📊 **Visual Analytics Tab**  
+  Analyze your browsing habits visually in a pie chart.  
 
 ---
 
@@ -75,11 +83,14 @@ Whether you're studying, working, or just browsing — Tablytics helps you stay 
    - View the total time tracked and time per site from the **Dashboard**.
    - Tabs will be listed with progress bars.
 
-
-3. **Reset Anytime**  
+3. **Analytics Tab**  
+   - Access the **Analytics Tab** from the main menu.
+   - View your tab activity in visual form: pie charts.
+     
+4. **Reset Anytime**  
    - Click the **Reset** button to clear all current time tracking.
  
-4. **Enable or Disable Tracking**  
+5. **Enable or Disable Tracking**  
    - Enable the **Enable time tracking** button to allow the extension track your time and Disable the button if you don't want the Extension track your time.
 
 ---
@@ -89,6 +100,7 @@ Whether you're studying, working, or just browsing — Tablytics helps you stay 
 - HTML, CSS, JavaScript, ReactJS
 - Chrome Extension APIs
 - Local Storage for data persistence
+- Chart.js for visual analytics
 
 ---
 
