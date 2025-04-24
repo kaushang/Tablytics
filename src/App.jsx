@@ -9,6 +9,8 @@ import {
   FaBars,
   FaTimes,
   FaChartPie,
+  FaSun,
+  FaMoon,
 } from "react-icons/fa";
 import PieChart from "./PieChart";
 import "./styles.css";
@@ -28,6 +30,7 @@ function App() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isTrackingEnabled, setIsTrackingEnabled] = useState(true);
   const [isStrictMode, setIsStrictMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
   const lastUpdateTime = useRef(Date.now());
   const dropdownRef = useRef(null);
   const menuRef = useRef(null);
@@ -276,21 +279,56 @@ function App() {
     };
   }, [menuRef]);
 
+  // Save dark mode preference to storage
+  useEffect(() => {
+    chrome.storage.local.get(["darkMode"], (result) => {
+      if (result.darkMode !== undefined) {
+        setDarkMode(result.darkMode);
+      }
+    });
+  }, []);
+
+  // Update body class and save dark mode preference when it changes
+  useEffect(() => {
+    if (darkMode) {
+      document.body.classList.add("dark-theme");
+    } else {
+      document.body.classList.remove("dark-theme");
+    }
+
+    // Save the dark mode preference
+    chrome.storage.local.set({ darkMode: darkMode });
+  }, [darkMode]);
+
+  // Toggle dark mode
+  const toggleDarkMode = () => {
+    setDarkMode(!darkMode);
+  };
   function refresh() {
     setCount(count + 1);
   }
-
   return (
-    <div className="app-container">
+    <div className={`app-container ${darkMode ? "dark-theme" : ""}`}>
       <div className="nav">
         <h1 className="title">Tablytics</h1>
-        <button
-          className="menu-toggle"
-          onClick={() => setIsMenuOpen(!isMenuOpen)}
-          aria-label="Toggle navigation menu"
-        >
-          {isMenuOpen ? <FaTimes /> : <FaBars />}
-        </button>
+        <div className="nav-controls">
+          <button
+            className="theme-toggle"
+            onClick={toggleDarkMode}
+            aria-label={
+              darkMode ? "Switch to light mode" : "Switch to dark mode"
+            }
+          >
+            {darkMode ? <FaSun /> : <FaMoon />}
+          </button>
+          <button
+            className="menu-toggle"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            aria-label="Toggle navigation menu"
+          >
+            {isMenuOpen ? <FaTimes /> : <FaBars />}
+          </button>
+        </div>
       </div>
 
       {/* Sliding menu */}
@@ -554,13 +592,13 @@ function App() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Time Limit (minutes)</label>
                 <input
                   type="number"
                   value={timeLimit}
                   onChange={(e) => setTimeLimit(e.target.value)}
                   className="form-input"
                   min="1"
+                  placeholder="Enter time in minutes"
                 />
                 <p className="form-help-text">
                   Set the maximum time you want to spend on this website
