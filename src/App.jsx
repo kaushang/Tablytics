@@ -11,6 +11,7 @@ import {
   FaChartPie,
   FaSun,
   FaMoon,
+  FaCalendarDay,
 } from "react-icons/fa";
 import PieChart from "./PieChart";
 import "./styles.css";
@@ -31,24 +32,85 @@ function App() {
   const [isTrackingEnabled, setIsTrackingEnabled] = useState(true);
   const [isStrictMode, setIsStrictMode] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
+  const [activeTabs, setActiveTabs] = useState([]);
+  const [todayWebsitesVisited, setTodayWebsitesVisited] = useState([]);
+  const [todayTotalTime, setTodayTotalTime] = useState(0);
+  const [currentSessionTime, setCurrentSessionTime] = useState(0);
+  const [sessionStartTime, setSessionStartTime] = useState(null);
   const lastUpdateTime = useRef(Date.now());
   const dropdownRef = useRef(null);
   const menuRef = useRef(null);
   const [count, setCount] = useState(0);
+  const [lastSessionId, setLastSessionId] = useState(null);
+
+  // Function to get today's date in YYYY-MM-DD format
+  const getTodayDateString = () => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(
+      2,
+      "0"
+    )}-${String(today.getDate()).padStart(2, "0")}`;
+  };
+
+  // Function to start a new session
+  const startNewSession = () => {
+    const newSessionStartTime = Date.now();
+    const newSessionId = `session_${newSessionStartTime}`;
+
+    // Save session data to chrome.storage.session which is cleared when browser closes
+    chrome.storage.session.set({
+      sessionStartTime: newSessionStartTime,
+      sessionId: newSessionId,
+    });
+
+    // Update state
+    setSessionStartTime(newSessionStartTime);
+    setCurrentSessionTime(0);
+    setLastSessionId(newSessionId);
+
+    // Log for debugging
+    console.log("New session started:", newSessionId);
+
+    return newSessionId;
+  };
 
   // Function to get latest tab data
-  const getTabData = () => {
+  const getTabData = (force = false) => {
     const currentTime = Date.now();
-    if (currentTime - lastUpdateTime.current >= 1000) {
-      chrome.runtime.sendMessage({ type: "GET_TAB_DATA" }, (response) => {
-        if (response) {
-          setTabData(response.tabData || {});
-          setActiveDomain(response.activeDomain);
-          setTimeLimits(response.timeLimits || {});
-          setStrictLimits(response.strictLimits || {});
-          lastUpdateTime.current = currentTime;
+    // Skip the time check if force=true to allow immediate updates
+    if (force || currentTime - lastUpdateTime.current >= 1000) {
+      chrome.runtime.sendMessage(
+        {
+          type: "GET_TAB_DATA",
+          multiTabTracking: true, // Always use multi-tab tracking
+          forceRefresh: true, // Force refresh to detect new tabs/sites
+        },
+        (response) => {
+          if (response) {
+            setTabData(response.tabData || {});
+            setActiveDomain(response.activeDomain);
+            setTimeLimits(response.timeLimits || {});
+            setStrictLimits(response.strictLimits || {});
+            if (response.activeTabs) {
+              setActiveTabs(response.activeTabs);
+            }
+            if (response.dailyData) {
+              setTodayWebsitesVisited(response.dailyData.websitesVisited || []);
+              setTodayTotalTime(response.dailyData.totalTime || 0);
+            }
+
+            // Update current session time - this is now handled separately
+            if (sessionStartTime) {
+              const elapsed = Math.floor(Date.now() - sessionStartTime);
+              if (isTrackingEnabled) {
+                setCurrentSessionTime(elapsed);
+              }
+            }
+
+            lastUpdateTime.current = currentTime;
+          }
         }
-      });
+      );
     }
   };
 
@@ -58,38 +120,91 @@ function App() {
   };
 
   useEffect(() => {
-    chrome.storage.local.get(
-      [
-        "tabData",
-        "activeDomain",
-        "timeLimits",
-        "strictLimits",
-        "isTrackingEnabled",
-      ],
-      (result) => {
-        if (result.tabData) {
-          setTabData(result.tabData);
-        }
-        if (result.activeDomain) {
-          setActiveDomain(result.activeDomain);
-        }
-        if (result.timeLimits) {
-          setTimeLimits(result.timeLimits);
-        }
-        if (result.strictLimits) {
-          setStrictLimits(result.strictLimits);
-        }
-        if (result.isTrackingEnabled !== undefined) {
-          setIsTrackingEnabled(result.isTrackingEnabled);
-        }
-        getTabData();
+    // First, check if there's a session in session storage
+    chrome.storage.session.get(
+      ["sessionId", "sessionStartTime"],
+      (sessionResult) => {
+        // Then check local storage for persistent data
+        chrome.storage.local.get(
+          [
+            "tabData",
+            "activeDomain",
+            "timeLimits",
+            "strictLimits",
+            "isTrackingEnabled",
+            "dailyTabData",
+            "lastSessionId",
+          ],
+          (result) => {
+            if (result.tabData) {
+              setTabData(result.tabData);
+            }
+            if (result.activeDomain) {
+              setActiveDomain(result.activeDomain);
+            }
+            if (result.timeLimits) {
+              setTimeLimits(result.timeLimits);
+            }
+            if (result.strictLimits) {
+              setStrictLimits(result.strictLimits);
+            }
+            if (result.isTrackingEnabled !== undefined) {
+              setIsTrackingEnabled(result.isTrackingEnabled);
+            }
+
+            const storedLastSessionId = result.lastSessionId;
+            setLastSessionId(storedLastSessionId);
+
+            // MODIFIED CODE: Don't restart session if extension is loaded
+            if (!sessionResult.sessionId) {
+              // Only start a new session if there isn't an existing one
+              const newSessionId = startNewSession();
+              chrome.storage.local.set({ lastSessionId: newSessionId });
+            } else {
+              // Continue existing session
+              setSessionStartTime(sessionResult.sessionStartTime);
+              // Calculate time for current session
+              const elapsed = Math.floor(
+                Date.now() - sessionResult.sessionStartTime
+              );
+              if (result.isTrackingEnabled !== false) {
+                setCurrentSessionTime(elapsed);
+              }
+            }
+
+            // Get today's data
+            if (result.dailyTabData) {
+              const todayStr = getTodayDateString();
+              const todayData = result.dailyTabData[todayStr];
+
+              if (todayData) {
+                setTodayWebsitesVisited(todayData.websitesVisited || []);
+                setTodayTotalTime(todayData.totalTime || 0);
+              }
+            }
+
+            // Force immediate refresh of tab data on initial load
+            getTabData(true);
+          }
+        );
       }
     );
 
-    const interval = setInterval(getTabData, 1000);
+    // Set up interval for updating current session time
+    const sessionTimeInterval = setInterval(() => {
+      if (sessionStartTime && isTrackingEnabled) {
+        const elapsed = Math.floor(Date.now() - sessionStartTime);
+        setCurrentSessionTime(elapsed);
+      }
+    }, 1000);
 
-    return () => clearInterval(interval);
-  }, []);
+    const tabDataInterval = setInterval(getTabData, 1000);
+
+    return () => {
+      clearInterval(tabDataInterval);
+      clearInterval(sessionTimeInterval);
+    };
+  }, [sessionStartTime, isTrackingEnabled]);
 
   // Click outside dropdown to close
   useEffect(() => {
@@ -141,8 +256,18 @@ function App() {
       if (response && response.success) {
         setTabData({});
         setActiveDomain(null);
-        setTimeLimits({});
-        setStrictLimits({});
+
+        // Start a new session
+        startNewSession();
+      }
+    });
+  };
+
+  const clearDailyData = () => {
+    chrome.runtime.sendMessage({ type: "CLEAR_DAILY_DATA" }, (response) => {
+      if (response && response.success) {
+        setTodayWebsitesVisited([]);
+        setTodayTotalTime(0);
       }
     });
   };
@@ -157,6 +282,11 @@ function App() {
       (response) => {
         if (response && response.success) {
           setIsTrackingEnabled(newTrackingState);
+
+          // If enabling tracking, reset session start time
+          if (newTrackingState) {
+            startNewSession();
+          }
         }
       }
     );
@@ -226,6 +356,7 @@ function App() {
     setIsDropdownOpen(false);
   };
 
+  // Calculate total time across all tabs - used for showing tab proportions
   const totalTimeTracked = Object.values(tabData).reduce((a, b) => a + b, 0);
   const websitesTracked = Object.keys(tabData).length;
   const websitesOverLimit = Object.entries(timeLimits).filter(
@@ -304,9 +435,12 @@ function App() {
   const toggleDarkMode = () => {
     setDarkMode(!darkMode);
   };
+
   function refresh() {
     setCount(count + 1);
+    getTabData(); // Force refresh data
   }
+
   return (
     <div className={`app-container ${darkMode ? "dark-theme" : ""}`}>
       <div className="nav">
@@ -363,93 +497,198 @@ function App() {
           <p>Tracking is currently paused. No tab is being tracked.</p>
         </div>
       )}
+
+      {/* Dashboard section */}
       {showDashboard && (
-        <div className="dashboard-container">
-          <div className="stats-card-container">
-            <div className="dashboard-card">
-              <h2>Total Time Tracked</h2>
-              <div className="dashboard-value">
-                <FaClock className="dashboard-icon" />
-                <span>{formatTime(totalTimeTracked)}</span>
+        <>
+          <div className="dashboard-container">
+            {/* First row of stats cards - Current Session */}
+            <div className="stats-card-container">
+              <div className="dashboard-card">
+                <h2>Current Session</h2>
+                <div className="dashboard-value">
+                  <FaClock className="dashboard-icon" />
+                  <span>{formatTime(currentSessionTime)}</span>
+                </div>
+              </div>
+
+              <div className="dashboard-card">
+                <h2>Tabs opened</h2>
+                <div className="dashboard-value">
+                  <FaChartLine className="dashboard-icon" />
+                  <span>{websitesTracked}</span>
+                </div>
+              </div>
+
+              <div className="dashboard-card">
+                <h2>Websites Over Limit</h2>
+                <div className="dashboard-value">
+                  <FaExclamationTriangle className="dashboard-icon warning" />
+                  <span>{websitesOverLimit}</span>
+                </div>
               </div>
             </div>
 
-            <div className="dashboard-card">
-              <h2>Websites Tracked</h2>
-              <div className="dashboard-value">
-                <FaChartLine className="dashboard-icon" />
-                <span>{websitesTracked}</span>
+            {/* Second row of stats cards - Daily Stats */}
+            <div className="stats-card-container">
+              <div className="dashboard-card">
+                <h2>Sites Visited Today</h2>
+                <div className="dashboard-value">
+                  <FaCalendarDay className="dashboard-icon" />
+                  <span>{todayWebsitesVisited.length}</span>
+                </div>
               </div>
-            </div>
 
-            <div className="dashboard-card">
-              <h2>Websites Over Limit</h2>
-              <div className="dashboard-value">
-                <FaExclamationTriangle className="dashboard-icon warning" />
-                <span>{websitesOverLimit}</span>
+              <div className="dashboard-card">
+                <h2>Total Time Today</h2>
+                <div className="dashboard-value">
+                  <FaClock className="dashboard-icon" />
+                  <span>{formatTime(todayTotalTime)}</span>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="stats-card">
-            <div className="stats-header">
-              <h2 className="active-tabs">Active Tabs</h2>
-              <div className="total-time">
-                <FaClock />
-                {formatTime(totalTimeTracked)}
+          <div className="dashboard-container-active-tabs">
+            <div className="stats-card">
+              <div className="stats-header">
+                <h2 className="active-tabs">Active Tabs</h2>
+                <div className="total-time">
+                  <FaClock />
+                  {formatTime(currentSessionTime)}
+                </div>
               </div>
-            </div>
 
-            <ul className="tabs-list">
-              {sortedTabs.map(([domain, time]) => (
-                <li
-                  key={domain}
-                  className={`tab-item ${
-                    domain === activeDomain ? "active" : ""
-                  }`}
-                >
-                  <div className="tab-header">
-                    <div className="domain-info">
-                      <img
-                        src={`https://www.google.com/s2/favicons?domain=${domain}&sz=32`}
-                        alt={`${domain} icon`}
-                        className="favicon"
-                        onError={(e) => {
-                          e.target.src =
-                            'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🌐</text></svg>';
-                        }}
-                      />
-                      <span className="domain">{domain}</span>
-                      {timeLimits[domain] && (
-                        <div
-                          className={`time-limit-indicator ${
-                            strictLimits[domain] ? "strict" : ""
-                          } ${
-                            tabData[domain] >= timeLimits[domain]
-                              ? "over-limit"
-                              : ""
-                          }`}
-                        >
-                          Limit: {formatTime(timeLimits[domain])}
-                          {strictLimits[domain] && " (Strict)"}
+              <ul className="tabs-list">
+                {sortedTabs.map(([domain, time]) => {
+                  // Check if this domain is active in any of the currently tracked tabs
+                  console.log(`Checking if domain "${domain}" is active...`);
+
+                  const isActive = activeTabs.some((tab) => {
+                    try {
+                      if (tab.url) {
+                        // Special handling for Chrome special pages
+                        if (
+                          domain.startsWith("chrome://") ||
+                          domain.startsWith("chrome-extension://") ||
+                          domain.startsWith("about:") ||
+                          domain.startsWith("edge://") ||
+                          domain === "New Tab"
+                        ) {
+                          // For tab URLs that are special pages
+                          if (
+                            tab.url.startsWith("chrome://") ||
+                            tab.url.startsWith("chrome-extension://") ||
+                            tab.url.startsWith("about:") ||
+                            tab.url.startsWith("edge://")
+                          ) {
+                            // Extract the special URL as domain
+                            const urlParts = tab.url.split("/");
+                            // Use protocol + location (e.g., chrome://extensions)
+                            const tabDomain = urlParts
+                              .slice(0, 3)
+                              .join("/")
+                              .replace(/\/$/, "");
+
+                            console.log(
+                              `Special URL comparison: Tab URL=${
+                                tab.url
+                              }, Tab domain=${tabDomain}, List domain=${domain}, Match=${
+                                tabDomain === domain
+                              }`
+                            );
+                            return tabDomain === domain;
+                          }
+                          // For new tabs (empty hostname)
+                          else if (domain === "New Tab") {
+                            try {
+                              const hostname = new URL(tab.url).hostname;
+                              const isNewTab = hostname === "";
+                              console.log(
+                                `New Tab check: URL=${tab.url}, hostname=${hostname}, isNewTab=${isNewTab}`
+                              );
+                              return isNewTab;
+                            } catch (e) {
+                              return false;
+                            }
+                          }
+                        }
+                        // Regular domain comparison
+                        else {
+                          const hostname = new URL(tab.url).hostname;
+                          const match = hostname === domain;
+                          if (match) {
+                            console.log(
+                              `Regular domain match: ${hostname} === ${domain}`
+                            );
+                          }
+                          return match;
+                        }
+                      }
+                      return false;
+                    } catch (e) {
+                      console.log(
+                        "Error in isActive check for domain",
+                        domain,
+                        ":",
+                        e
+                      );
+                      return false;
+                    }
+                  });
+
+                  console.log(`Domain "${domain}" active status: ${isActive}`);
+
+                  return (
+                    <li
+                      key={domain}
+                      className={`tab-item ${isActive ? "active" : ""}`}
+                    >
+                      <div className="tab-header">
+                        <div className="domain-info">
+                          <img
+                            src={`https://www.google.com/s2/favicons?domain=${domain}&sz=32`}
+                            alt={`${domain} icon`}
+                            className="favicon"
+                            onError={(e) => {
+                              e.target.src =
+                                'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🌐</text></svg>';
+                            }}
+                          />
+                          <span className="domain">{domain}</span>
+                          {timeLimits[domain] && (
+                            <div
+                              className={`time-limit-indicator ${
+                                strictLimits[domain] ? "strict" : ""
+                              } ${
+                                tabData[domain] >= timeLimits[domain]
+                                  ? "over-limit"
+                                  : ""
+                              }`}
+                            >
+                              Limit: {formatTime(timeLimits[domain])}
+                              {strictLimits[domain] && " (Strict)"}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    <span className="time">{formatTime(time)}</span>
-                  </div>
-                  <div className="progress-container">
-                    <div
-                      className="progress-bar"
-                      style={{ width: `${(time / totalTimeTracked) * 100}%` }}
-                    />
-                  </div>
-                </li>
-              ))}
-            </ul>
+                        <span className="time">{formatTime(time)}</span>
+                      </div>
+                      <div className="progress-container">
+                        <div
+                          className="progress-bar"
+                          style={{
+                            width: `${(time / totalTimeTracked) * 100}%`,
+                          }}
+                        />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           </div>
-        </div>
+        </>
       )}
-
       {/* Analytics section with pie chart */}
       {showAnalytics && (
         <div className="analytics-container">
@@ -510,6 +749,7 @@ function App() {
         </div>
       )}
 
+      {/* Settings section */}
       {showSettings && (
         <div>
           <div className="settings-section">
@@ -675,13 +915,26 @@ function App() {
           </div>
           <div className="settings-sections">
             <div className="time-limit-card">
-              <span className="form-label">Reset Time</span>
+              <span className="form-label">Reset Session Data</span>
               <button className="clear-button" onClick={clearData}>
                 <FaTrash />
-                &nbsp; Reset
+                &nbsp; Reset Session
               </button>
               <p className="form-help-text reset">
-                Resets all the time counted on all the sites to 0
+                Resets the current session time and clears all active tab data
+              </p>
+            </div>
+          </div>
+
+          <div className="settings-sections">
+            <div className="time-limit-card">
+              <span className="form-label">Reset Today's Data</span>
+              <button className="clear-button" onClick={clearDailyData}>
+                <FaTrash />
+                &nbsp; Reset Today's Data
+              </button>
+              <p className="form-help-text reset">
+                Resets all data collected today while keeping historical data
               </p>
             </div>
           </div>

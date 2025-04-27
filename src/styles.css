@@ -429,15 +429,21 @@ input:checked + .toggle-slider:before {
   background-color: #ffebee;
 }
 
-.dashboard-container {
+.dashboard-container, .dashboard-container-active-tabs {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 20px;
+}
+.dashboard-container-active-tabs {
+  margin-top: 20px;
+  flex-direction: column;
+  width: 100%;
 }
 
 .stats-card-container {
-  display: grid;
-  grid-template-columns: 1fr;
+  width: 50%;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
 }
 

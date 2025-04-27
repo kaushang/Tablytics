@@ -9,9 +9,25 @@ let isTrackingEnabled = true;  // Default to enabled
 let updateInterval = null;  // Interval for regular updates
 let isUpdating = false;  // Lock to prevent concurrent updates
 let lastActiveUpdate = Date.now(); // Track when we last saw activity
+let activeTabs = []; // Store all tabs that are currently active
+let dailyTabData = {}; // Store daily tab data
+let lastTabCheck = 0; // Last time we did a full tab check
+
+// Function to get today's date in YYYY-MM-DD format
+const getTodayDateString = () => {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+};
 
 // Load existing data from storage
-chrome.storage.local.get(["tabData", "activeDomain", "timeLimits", "strictLimits", "isTrackingEnabled"], (result) => {
+chrome.storage.local.get([
+  "tabData", 
+  "activeDomain", 
+  "timeLimits", 
+  "strictLimits", 
+  "isTrackingEnabled",
+  "dailyTabData"
+], (result) => {
   if (result.tabData) {
     tabData = result.tabData;
   }
@@ -27,9 +43,23 @@ chrome.storage.local.get(["tabData", "activeDomain", "timeLimits", "strictLimits
   if (result.isTrackingEnabled !== undefined) {
     isTrackingEnabled = result.isTrackingEnabled;
   }
+  if (result.dailyTabData) {
+    dailyTabData = result.dailyTabData;
+  }
+  
+  // Initialize daily data for today if not exists
+  const todayStr = getTodayDateString();
+  if (!dailyTabData[todayStr]) {
+    dailyTabData[todayStr] = {
+      tabData: {},
+      websitesVisited: [],
+      totalTime: 0
+    };
+    chrome.storage.local.set({ dailyTabData });
+  }
   
   // Initial active tab check
-  checkActiveTab();
+  checkAllTabs();
   
   // Check for and remove any domains that don't have open tabs
   cleanupClosedTabs();
@@ -38,35 +68,123 @@ chrome.storage.local.get(["tabData", "activeDomain", "timeLimits", "strictLimits
   startUpdateInterval();
 });
 
-// Function to check and get the active tab
-async function checkActiveTab() {
+// Function to update daily tracking data
+function updateDailyData(domain, timeAdded) {
+  const todayStr = getTodayDateString();
+  
+  // Initialize daily data for today if not exists
+  if (!dailyTabData[todayStr]) {
+    dailyTabData[todayStr] = {
+      tabData: {},
+      websitesVisited: [],
+      totalTime: 0
+    };
+  }
+  
+  const todayData = dailyTabData[todayStr];
+  
+  // Initialize domain data if not exists
+  if (!todayData.tabData[domain]) {
+    todayData.tabData[domain] = 0;
+  }
+  
+  // Add time to domain
+  todayData.tabData[domain] += timeAdded;
+  
+  // Add to websites visited if not already in list
+  if (!todayData.websitesVisited.includes(domain)) {
+    todayData.websitesVisited.push(domain);
+  }
+  
+  // Update total time
+  todayData.totalTime = Object.values(todayData.tabData).reduce((a, b) => a + b, 0);
+  
+  // Save to storage
+  chrome.storage.local.set({ dailyTabData });
+}
+
+// Function to check and get all active tabs
+async function checkAllTabs() {
+  if (!isTrackingEnabled) return;
+  
   try {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tabs.length > 0) {
-      const currentActiveTab = tabs[0];
-      if (currentActiveTab.id !== activeTabId) {
-        // We have a new active tab
-        activeTabId = currentActiveTab.id;
-        lastActiveTime = Date.now();
-        lastActiveUpdate = Date.now();
+    // Update the timestamp of the last check
+    const currentTime = Date.now();
+    lastTabCheck = currentTime;
+    
+    // Get only active tabs from all windows
+    let activeTabsList = [];
+    
+    // Get all windows
+    const windows = await chrome.windows.getAll({ populate: true });
+      
+    // Get active tab from each window
+    for (const window of windows) {
+      // For each window, find the active tab (the one visible to the user)
+      const activeTab = window.tabs.find(tab => tab.active);
+      if (activeTab && isValidTab(activeTab)) {
+        activeTabsList.push(activeTab);
         
-        // Update active domain if URL exists
-        if (currentActiveTab.url) {
-          try {
-            activeDomain = new URL(currentActiveTab.url).hostname;
-            chrome.storage.local.set({ activeDomain: activeDomain });
-          } catch (error) {
-            console.log("Error setting active domain:", error);
+        // If this window is focused, it's the primary active tab
+        if (window.focused) {
+          activeTabId = activeTab.id;
+          lastActiveTime = Date.now();
+          lastActiveUpdate = Date.now();
+          
+          // Update active domain for the popup display
+          if (activeTab.url) {
+            try {
+              // Handle special URLs like chrome:// and about:
+              if (activeTab.url.startsWith('chrome://') || 
+                  activeTab.url.startsWith('chrome-extension://') ||
+                  activeTab.url.startsWith('about:') ||
+                  activeTab.url.startsWith('edge://')) {
+                // Extract the special URL as domain (e.g., "chrome://extensions")
+                const urlParts = activeTab.url.split('/');
+                // Use first two parts (protocol + location)
+                activeDomain = urlParts.slice(0, 3).join('/').replace(/\/$/, '');
+              } else {
+                // Regular URL - use hostname
+                activeDomain = new URL(activeTab.url).hostname;
+              }
+              
+              // If domain is empty (like for new tabs), use a placeholder
+              if (!activeDomain) {
+                activeDomain = "New Tab";
+              }
+              
+              chrome.storage.local.set({ activeDomain });
+            } catch (error) {
+              console.log("Error setting active domain:", error);
+            }
           }
         }
-        console.log("Active tab updated to:", activeTabId, "Domain:", activeDomain);
-      } else {
-        // Same active tab, but update the active time
-        lastActiveUpdate = Date.now();
       }
     }
+    
+    // Update our activeTabs list with all trackable active tabs (one per window)
+    activeTabs = activeTabsList.filter(tab => {
+      try {
+        return tab.url;
+      } catch (e) {
+        return false;
+      }
+    });
+
+    console.log(`Tracking ${activeTabs.length} active tabs across ${new Set(activeTabs.map(tab => tab.windowId)).size} windows`);
   } catch (error) {
-    console.log("Error checking active tab:", error);
+    console.log("Error checking active tabs:", error);
+  }
+}
+
+// Helper function to check if a tab is valid for tracking
+function isValidTab(tab) {
+  try {
+    return tab && 
+           tab.url && 
+           tab.status === 'complete';
+  } catch (e) {
+    return false;
   }
 }
 
@@ -75,27 +193,68 @@ const checkTimeLimit = async (domain, timeSpent) => {
   if (timeLimits[domain] && timeSpent >= timeLimits[domain]) {
     // If this is a strict limit, close all tabs for this domain
     if (strictLimits[domain]) {
-      // Find all tabs with this domain
-      const tabs = await chrome.tabs.query({});
-      for (const tab of tabs) {
-        try {
-          if (tab.url && new URL(tab.url).hostname === domain) {
-            // Close the tab
-            chrome.tabs.remove(tab.id);
+      // Only proceed if we haven't already alerted about this domain
+      if (!alertedDomains.has(domain)) {
+        console.log(`Strict time limit reached for ${domain}. Closing tabs...`);
+        
+        // Mark domain as alerted to prevent repeated notifications
+        alertedDomains.add(domain);
+        
+        // Find all tabs with this domain
+        const tabs = await chrome.tabs.query({});
+        let tabsClosed = 0;
+        
+        for (const tab of tabs) {
+          try {
+            // Match the domain format exactly as it appears in our tabData
+            let tabDomain;
+            
+            if (tab.url) {
+              // For special URLs like chrome://, about:, etc.
+              if (tab.url.startsWith('chrome://') || 
+                  tab.url.startsWith('chrome-extension://') ||
+                  tab.url.startsWith('about:') ||
+                  tab.url.startsWith('edge://')) {
+                // Extract the special URL as domain
+                const urlParts = tab.url.split('/');
+                tabDomain = urlParts.slice(0, 3).join('/').replace(/\/$/, '');
+              } else {
+                // Regular URL - use hostname
+                tabDomain = new URL(tab.url).hostname;
+              }
+              
+              // For new tabs
+              if (!tabDomain) {
+                tabDomain = "New Tab";
+              }
+              
+              // Close tabs that match the exact domain
+              if (tabDomain === domain) {
+                await chrome.tabs.remove(tab.id);
+                tabsClosed++;
+              }
+            }
+          } catch (error) {
+            console.log("Error processing tab for strict limit:", error);
           }
-        } catch (error) {
-          console.log("Error processing tab for strict limit:", error);
         }
+        
+        // Show notification only once when tabs are closed
+        if (tabsClosed > 0) {
+          chrome.notifications.create({
+            type: 'basic',
+            iconUrl: 'icons/icon128.png',
+            title: 'Strict Time Limit Enforced',
+            message: `Reached limit of ${formatTime(timeLimits[domain])} on ${domain}. ${tabsClosed} tab(s) have been closed.`
+          });
+        }
+        
+        // Reset the alert flag after 5 minutes to allow future enforcements
+        // This is shorter than non-strict limits since we want to continue enforcing strict limits
+        setTimeout(() => {
+          alertedDomains.delete(domain);
+        }, 300000); // 5 minutes in milliseconds
       }
-      
-      // Show notification
-      chrome.notifications.create({
-        type: 'basic',
-        iconUrl: 'icons/icon128.png',
-        title: 'Strict Time Limit Enforced',
-        message: `Reached limit of ${formatTime(timeLimits[domain])} on ${domain}. Tabs have been closed.`
-      });
-      
     } else if (!alertedDomains.has(domain)) {
       // Show notification for regular (non-strict) limits
       chrome.notifications.create({
@@ -108,7 +267,7 @@ const checkTimeLimit = async (domain, timeSpent) => {
       // Mark domain as alerted
       alertedDomains.add(domain);
       
-      // Reset alert after 1 hour
+      // Reset alert after 1 hour for non-strict limits
       setTimeout(() => {
         alertedDomains.delete(domain);
       }, 3600000); // 1 hour in milliseconds
@@ -139,16 +298,37 @@ async function cleanupClosedTabs() {
     for (const tab of tabs) {
       try {
         if (tab.url) {
-          const domain = new URL(tab.url).hostname;
-          if (domain) {
-            openDomains.add(domain);
+          let domain;
+          
+          // For special URLs like chrome://, about:, etc. use the protocol and first part as domain
+          if (tab.url.startsWith('chrome://') || 
+              tab.url.startsWith('chrome-extension://') ||
+              tab.url.startsWith('about:') ||
+              tab.url.startsWith('edge://')) {
+            // Extract the special URL as domain (e.g., "chrome://extensions")
+            const urlParts = tab.url.split('/');
+            // Use first two parts (protocol + location)
+            domain = urlParts.slice(0, 3).join('/').replace(/\/$/, '');
+          } else {
+            // Regular URL - use hostname
+            domain = new URL(tab.url).hostname;
           }
+          
+          // If domain is empty (like for new tabs), use a placeholder
+          if (!domain) {
+            domain = "New Tab";
+          }
+          
+          openDomains.add(domain);
         }
       } catch (error) {
         // Skip invalid URLs
         console.log("Error processing tab URL:", error);
       }
     }
+    
+    // Get today's date - don't clear daily data for domains
+    const todayStr = getTodayDateString();
     
     // Track if we need to update storage
     let hasChanges = false;
@@ -163,98 +343,99 @@ async function cleanupClosedTabs() {
       }
     }
     
-    // Remove time limits for domains that no longer have open tabs
-    const updatedTimeLimits = {};
-    for (const [domain, limit] of Object.entries(timeLimits)) {
-      if (openDomains.has(domain)) {
-        updatedTimeLimits[domain] = limit;
-      } else {
-        hasChanges = true;
-      }
-    }
-    
-    // Remove strict limits for domains that no longer have open tabs
-    const updatedStrictLimits = {};
-    for (const domain in strictLimits) {
-      if (openDomains.has(domain)) {
-        updatedStrictLimits[domain] = strictLimits[domain];
-      } else {
-        hasChanges = true;
-      }
-    }
-    
-    // Only update if there were changes
+    // Only update if there were changes to current session data
     if (hasChanges) {
       tabData = updatedTabData;
-      timeLimits = updatedTimeLimits;
-      strictLimits = updatedStrictLimits;
       
-      // Update all in storage
-      chrome.storage.local.set({ 
-        tabData: tabData,
-        timeLimits: timeLimits,
-        strictLimits: strictLimits
-      });
-      console.log("Removed closed tabs from tracking data, time limits, and strict limits");
+      // Update in storage
+      chrome.storage.local.set({ tabData });
+      console.log("Removed closed tabs from tracking data");
     }
   } catch (error) {
     console.log("Error cleaning up closed tabs:", error);
   }
 }
 
-// Update active tab time
-async function updateActiveTabTime() {
-  // First, check if we've been inactive too long (more than 5 seconds)
-  const currentTime = Date.now();
-  if (currentTime - lastActiveUpdate > 5000) {
-    console.log("Too much time since last activity update, checking active tab...");
-    await checkActiveTab();
-  }
-
+// Update active tabs time
+async function updateAllActiveTabs() {
   // Use a lock to prevent concurrent updates
-  if (isUpdating || !isTrackingEnabled || !activeTabId || !lastActiveTime) return;
+  if (isUpdating || !isTrackingEnabled) return;
   
   isUpdating = true;
   
   try {
-    const activeTab = await chrome.tabs.get(activeTabId);
-    if (activeTab && activeTab.url) {
-      const currentTime = Date.now();
-      const timeElapsed = currentTime - lastActiveTime;
-      
-      // Only update if time elapsed is reasonable (max 1 second per update)
-      // This prevents huge jumps if the timer somehow gets delayed
-      const actualTimeToAdd = Math.min(timeElapsed, 1000);
-      
-      // Update the time for this domain
-      const domain = new URL(activeTab.url).hostname;
-      if (!tabData[domain]) {
-        tabData[domain] = 0;
+    // First do a complete refresh of active tabs if needed
+    const currentTime = Date.now();
+    if (currentTime - lastTabCheck > 5000) {
+      await checkAllTabs();
+    }
+    
+    if (activeTabs.length === 0) {
+      // No active tabs to track
+      isUpdating = false;
+      return;
+    }
+    
+    // Update time for all active tabs
+    const timeNow = Date.now();
+    const timeElapsed = 1000; // Always add exactly 1 second to avoid drift
+    
+     // ➡️ CHANGE #1: Calculate time per tab
+     const timePerTab = timeElapsed / activeTabs.length;
+
+    // Process each active tab
+    for (const tab of activeTabs) {
+      try {
+        if (tab.url) {
+          // Get domain or special URL name
+          let domain;
+          
+          // For special URLs like chrome://, about:, etc. use the protocol and first part as domain
+          if (tab.url.startsWith('chrome://') || 
+              tab.url.startsWith('chrome-extension://') ||
+              tab.url.startsWith('about:') ||
+              tab.url.startsWith('edge://')) {
+            // Extract the special URL as domain (e.g., "chrome://extensions")
+            const urlParts = tab.url.split('/');
+            // Use first two parts (protocol + location)
+            domain = urlParts.slice(0, 3).join('/').replace(/\/$/, '');
+          } else {
+            // Regular URL - use hostname
+            domain = new URL(tab.url).hostname;
+          }
+          
+          // If domain is empty (like for new tabs), use a placeholder
+          if (!domain) {
+            domain = "New Tab";
+          }
+          
+          // Initialize if needed
+          if (!tabData[domain]) {
+            tabData[domain] = 0;
+          }
+          
+          // Update time
+          tabData[domain] += timeElapsed;
+
+          updateDailyData(domain, timePerTab);
+
+          // Check time limit
+          await checkTimeLimit(domain, tabData[domain]);
+        }
+      } catch (error) {
+        console.log("Error processing tab in tracking:", error);
       }
-      
-      tabData[domain] += actualTimeToAdd;
-      lastActiveTime = currentTime;
-      lastActiveUpdate = currentTime; // Update the activity time
-      
-      // Save to storage
-      await chrome.storage.local.set({ tabData: tabData });
-      
-      // Check time limit
-      await checkTimeLimit(domain, tabData[domain]);
-    } else {
-      // If the active tab doesn't have a URL, reset active tab tracking
-      await checkActiveTab();
     }
+    
+    // Save all tab data to storage
+    await chrome.storage.local.set({ tabData });
+    
+    // Update lastActiveTime for the next update
+    lastActiveTime = timeNow;
+    lastActiveUpdate = timeNow;
+    
   } catch (error) {
-    console.log("Error updating active tab time:", error);
-    // Tab might have been closed
-    if (error.message && error.message.includes("No tab with id")) {
-      activeTabId = null;
-      lastActiveTime = null;
-      activeDomain = null;
-      // Try to find a new active tab
-      await checkActiveTab();
-    }
+    console.log("Error in tab tracking update:", error);
   } finally {
     isUpdating = false;
   }
@@ -269,65 +450,62 @@ function startUpdateInterval() {
   
   // Set up a regular interval to update tab time every second
   updateInterval = setInterval(async () => {
-    await updateActiveTabTime();
+    await updateAllActiveTabs();
   }, 1000);
   
-  // Add a separate heartbeat interval to check the active tab regularly
+  // Add a separate heartbeat interval to check active tabs regularly
   // This helps recover from any state where tracking might have stopped
   setInterval(async () => {
     const currentTime = Date.now();
-    if (currentTime - lastActiveUpdate > 3000) {
-      console.log("Heartbeat check - no recent updates, checking active tab");
-      await checkActiveTab();
+    if (currentTime - lastActiveUpdate > 5000) {
+      console.log("Heartbeat check - no recent updates, refreshing active tabs");
+      await checkAllTabs();
     }
-  }, 5000);
+  }, 10000);
 }
 
 // Track tab activation
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
   console.log("Tab activated:", activeInfo);
   
-  if (!isTrackingEnabled) {
-    // If tracking is disabled, just update the activeTabId but don't track time
-    activeTabId = activeInfo.tabId;
-    return;
-  }
-  
-  // Update activeTabId and lastActiveTime 
+  // Update activeTabId and lastActiveTime
   activeTabId = activeInfo.tabId;
   lastActiveTime = Date.now();
   lastActiveUpdate = Date.now();
-
-  // Update active domain immediately
-  try {
-    const tab = await chrome.tabs.get(activeTabId);
-    if (tab.url) {
-      activeDomain = new URL(tab.url).hostname;
-      chrome.storage.local.set({ activeDomain: activeDomain });
-    }
-  } catch (error) {
-    console.log("Error getting active tab:", error);
-  }
+  
+  // Always refresh our active tabs list
+  await checkAllTabs();
 });
 
 // Track tab updates (URL changes)
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (!isTrackingEnabled) return;
   
-  if (tabId === activeTabId && changeInfo.url) {
-    // Reset timing when URL changes
-    lastActiveTime = Date.now();
+  // If URL changed in any tab, refresh our active tabs
+  if (changeInfo.url) {
+    console.log("Tab URL changed:", tabId, changeInfo.url);
     lastActiveUpdate = Date.now();
-    
-    // Update active domain
-    activeDomain = new URL(tab.url).hostname;
-    chrome.storage.local.set({ activeDomain: activeDomain });
+    await checkAllTabs();
   }
   
-  // Any tab update might indicate user activity, so update the activity time
-  if (tabId === activeTabId) {
-    lastActiveUpdate = Date.now();
+  // If the tab's status changed to 'complete', it might be relevant
+  if (changeInfo.status === 'complete') {
+    await checkAllTabs();
   }
+  
+  // Any tab update might indicate user activity
+  lastActiveUpdate = Date.now();
+});
+
+// Track tab creation
+chrome.tabs.onCreated.addListener(async (tab) => {
+  if (!isTrackingEnabled) return;
+  
+  console.log("New tab created:", tab.id);
+  lastActiveUpdate = Date.now();
+  
+  // New tab created, refresh our active tabs list
+  await checkAllTabs();
 });
 
 // Track tab removal
@@ -336,23 +514,39 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   if (tabId === activeTabId) {
     activeTabId = null;
     lastActiveTime = null;
-    activeDomain = null;
-    chrome.storage.local.set({ activeDomain: null });
     
     // Try to find a new active tab
-    await checkActiveTab();
+    await checkAllTabs();
   }
-
-  // Cleanup tab data - remove domains that no longer have open tabs
-  await cleanupClosedTabs();
+  
+  // Update our active tabs list
+  const tabIndex = activeTabs.findIndex(tab => tab.id === tabId);
+  if (tabIndex >= 0) {
+    activeTabs.splice(tabIndex, 1);
+  }
+  
+  // Wait a moment for the tab close to complete
+  setTimeout(async () => {
+    // Cleanup tab data and refresh tabs
+    await cleanupClosedTabs();
+    await checkAllTabs();
+  }, 500);
 });
 
 // Handle window focus events
 chrome.windows.onFocusChanged.addListener(async (windowId) => {
-  // If a window gets focus, check active tab
+  // If a window gets focus, check active tabs
   if (windowId !== chrome.windows.WINDOW_ID_NONE) {
-    await checkActiveTab();
+    lastActiveUpdate = Date.now();
+    await checkAllTabs();
   }
+});
+
+// Listen for window creation
+chrome.windows.onCreated.addListener(async (window) => {
+  // New window created, check active tabs
+  lastActiveUpdate = Date.now();
+  await checkAllTabs();
 });
 
 // Track user activity through clicks and other interactions
@@ -365,23 +559,44 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
   
   if (request.type === 'GET_TAB_DATA') {
-    // Run cleanup before sending data
-    checkActiveTab().then(() => {
-      cleanupClosedTabs().then(() => {
-        sendResponse({ 
-          tabData: tabData,
-          activeDomain: activeDomain,
-          timeLimits: timeLimits,
-          strictLimits: strictLimits
+    // Force refresh if requested
+    if (request.forceRefresh) {
+      checkAllTabs().then(() => {
+        cleanupClosedTabs().then(() => {
+          // Get today's data
+          const todayStr = getTodayDateString();
+          const todayData = dailyTabData[todayStr] || { websitesVisited: [], totalTime: 0 };
+          
+          // Send response with all data
+          sendResponse({ 
+            tabData: tabData,
+            activeDomain: activeDomain,
+            timeLimits: timeLimits,
+            strictLimits: strictLimits,
+            activeTabs: activeTabs,
+            dailyData: todayData
+          });
         });
       });
-    });
+    } else {
+      // Get today's data
+      const todayStr = getTodayDateString();
+      const todayData = dailyTabData[todayStr] || { websitesVisited: [], totalTime: 0 };
+      
+      // Send current data without refresh
+      sendResponse({ 
+        tabData: tabData,
+        activeDomain: activeDomain,
+        timeLimits: timeLimits,
+        strictLimits: strictLimits,
+        activeTabs: activeTabs,
+        dailyData: todayData
+      });
+    }
     return true;
   } else if (request.type === 'CLEAR_DATA') {
-    // Reset all state
+    // Reset session state
     tabData = {};
-    timeLimits = {};
-    strictLimits = {};
     activeDomain = null;
     alertedDomains.clear();
     
@@ -394,15 +609,37 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       lastActiveTime = null;
     }
     
-    // Clear storage
+    // Clear session storage
     chrome.storage.local.set({ 
       tabData: {}, 
-      timeLimits: {},
-      strictLimits: {},
       activeDomain: null 
     }, () => {
       sendResponse({ success: true });
     });
+    
+    // Refresh active tabs
+    checkAllTabs();
+    
+    return true;
+  } else if (request.type === 'CLEAR_DAILY_DATA') {
+    // Reset daily data for today
+    const todayStr = getTodayDateString();
+    
+    if (dailyTabData[todayStr]) {
+      dailyTabData[todayStr] = {
+        tabData: {},
+        websitesVisited: [],
+        totalTime: 0
+      };
+      
+      // Save to storage
+      chrome.storage.local.set({ dailyTabData }, () => {
+        sendResponse({ success: true });
+      });
+    } else {
+      sendResponse({ success: true });
+    }
+    
     return true;
   } else if (request.type === 'SET_TIME_LIMIT') {
     // Update time limit for a domain
@@ -434,11 +671,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     
     // If tracking was disabled, reset the current active session
     if (!isTrackingEnabled) {
-      activeTabId = null;
+      // Keep the tab IDs but don't track time
       lastActiveTime = null;
     } else {
       // If tracking was enabled, start a new session
-      checkActiveTab();
+      lastActiveTime = Date.now();
+      lastActiveUpdate = Date.now();
+      checkAllTabs();
     }
     
     chrome.storage.local.set({ isTrackingEnabled }, () => {
@@ -460,14 +699,11 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }
 });
 
-// For robust tracking, we need to modify app.jsx to report user activity
-// This will help keep tracking running even during long periods of inactivity
-
 // Cleanup on initial load
 cleanupClosedTabs();
 
 // Initialize right away
 startUpdateInterval();
 
-// Check active tab initially
-checkActiveTab();
+// Check active tabs initially
+checkAllTabs();
