@@ -12,12 +12,50 @@ let lastActiveUpdate = Date.now(); // Track when we last saw activity
 let activeTabs = []; // Store all tabs that are currently active
 let dailyTabData = {}; // Store daily tab data
 let lastTabCheck = 0; // Last time we did a full tab check
+let currentSessionStartTime = null; // Track when the current session started
 
 // Function to get today's date in YYYY-MM-DD format
 const getTodayDateString = () => {
   const today = new Date();
   return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 };
+
+// Initialize session tracking
+function initializeSession() {
+  // Check if there's already a session in storage
+  chrome.storage.session.get(['sessionId', 'sessionStartTime'], (result) => {
+    if (result.sessionId && result.sessionStartTime) {
+      // Session exists, use it
+      currentSessionStartTime = result.sessionStartTime;
+      console.log("Retrieved existing session:", result.sessionId, "started at", new Date(currentSessionStartTime));
+    } else {
+      // Start a new session
+      startNewSession();
+    }
+  });
+}
+
+// Function to start a new session
+function startNewSession() {
+  const newSessionStartTime = Date.now();
+  const newSessionId = `session_${newSessionStartTime}`;
+  
+  // Save to session storage (persists until browser closes)
+  chrome.storage.session.set({
+    sessionStartTime: newSessionStartTime,
+    sessionId: newSessionId
+  });
+  
+  // Update our local reference
+  currentSessionStartTime = newSessionStartTime;
+  
+  // Also save the last session ID to local storage for persistence
+  chrome.storage.local.set({ lastSessionId: newSessionId });
+  
+  console.log("New session started:", newSessionId, "at", new Date(newSessionStartTime));
+  
+  return newSessionId;
+}
 
 // Load existing data from storage
 chrome.storage.local.get([
@@ -57,6 +95,9 @@ chrome.storage.local.get([
     };
     chrome.storage.local.set({ dailyTabData });
   }
+  
+  // Initialize session immediately on extension load
+  initializeSession();
   
   // Initial active tab check
   checkAllTabs();
@@ -170,6 +211,11 @@ async function checkAllTabs() {
         return false;
       }
     });
+
+    // If we have active tabs but no session, start one
+    if (activeTabs.length > 0 && !currentSessionStartTime) {
+      startNewSession();
+    }
 
     console.log(`Tracking ${activeTabs.length} active tabs across ${new Set(activeTabs.map(tab => tab.windowId)).size} windows`);
   } catch (error) {
@@ -473,6 +519,11 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
   lastActiveTime = Date.now();
   lastActiveUpdate = Date.now();
   
+  // Start a session if we don't have one yet
+  if (!currentSessionStartTime) {
+    startNewSession();
+  }
+  
   // Always refresh our active tabs list
   await checkAllTabs();
 });
@@ -574,7 +625,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             timeLimits: timeLimits,
             strictLimits: strictLimits,
             activeTabs: activeTabs,
-            dailyData: todayData
+            dailyData: todayData,
+            sessionStartTime: currentSessionStartTime,
+            currentSessionTime: currentSessionStartTime ? Date.now() - currentSessionStartTime : 0
           });
         });
       });
@@ -590,7 +643,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         timeLimits: timeLimits,
         strictLimits: strictLimits,
         activeTabs: activeTabs,
-        dailyData: todayData
+        dailyData: todayData,
+        sessionStartTime: currentSessionStartTime,
+        currentSessionTime: currentSessionStartTime ? Date.now() - currentSessionStartTime : 0
       });
     }
     return true;
@@ -677,6 +732,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       // If tracking was enabled, start a new session
       lastActiveTime = Date.now();
       lastActiveUpdate = Date.now();
+      
+      // Start a new session if there isn't one
+      if (!currentSessionStartTime) {
+        startNewSession();
+      }
+      
       checkAllTabs();
     }
     
@@ -697,6 +758,15 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     lastActiveTime = Date.now();
     lastActiveUpdate = Date.now();
   }
+});
+
+// Listen for browser startup
+chrome.runtime.onStartup.addListener(() => {
+  console.log("Browser started - initializing session tracking");
+  // Start a new session when the browser starts
+  initializeSession();
+  // Make sure we check for active tabs immediately
+  checkAllTabs();
 });
 
 // Cleanup on initial load
