@@ -22,17 +22,9 @@ const getTodayDateString = () => {
 
 // Initialize session tracking
 function initializeSession() {
-  // Check if there's already a session in storage
-  chrome.storage.session.get(['sessionId', 'sessionStartTime'], (result) => {
-    if (result.sessionId && result.sessionStartTime) {
-      // Session exists, use it
-      currentSessionStartTime = result.sessionStartTime;
-      console.log("Retrieved existing session:", result.sessionId, "started at", new Date(currentSessionStartTime));
-    } else {
-      // Start a new session
-      startNewSession();
-    }
-  });
+  // Always start a new session when initializing
+  // This ensures we don't continue sessions from before the browser was closed
+  startNewSession();
 }
 
 // Function to start a new session
@@ -96,17 +88,28 @@ chrome.storage.local.get([
     chrome.storage.local.set({ dailyTabData });
   }
   
-  // Initialize session immediately on extension load
-  initializeSession();
-  
-  // Initial active tab check
-  checkAllTabs();
-  
-  // Check for and remove any domains that don't have open tabs
-  cleanupClosedTabs();
-  
-  // Initialize update interval after loading data
-  startUpdateInterval();
+  // Check if this is an extension load from a browser startup
+  // Chrome sends different events for startup vs installation
+  chrome.runtime.getPlatformInfo(function(info) {
+    // We only initialize a session if the extension is loaded by the user
+    // This avoids background tracking when the browser is closed
+    console.log("Extension loaded, platform:", info.os);
+    
+    // Reset the session time when extension is loaded
+    currentSessionStartTime = null;
+    
+    // Initialize session immediately on extension load
+    initializeSession();
+    
+    // Initial active tab check
+    checkAllTabs();
+    
+    // Check for and remove any domains that don't have open tabs
+    cleanupClosedTabs();
+    
+    // Initialize update interval after loading data
+    startUpdateInterval();
+  });
 });
 
 // Function to update daily tracking data
@@ -293,10 +296,20 @@ const checkTimeLimit = async (domain, timeSpent) => {
             title: 'Strict Time Limit Enforced',
             message: `Reached limit of ${formatTime(timeLimits[domain])} on ${domain}. ${tabsClosed} tab(s) have been closed.`
           });
+          
+          // Remove the strict limit after tabs are closed
+          console.log(`Removing strict time limit for ${domain} after enforcement`);
+          delete strictLimits[domain];
+          delete timeLimits[domain];
+          
+          // Save the updated limits to storage
+          chrome.storage.local.set({ 
+            timeLimits: timeLimits,
+            strictLimits: strictLimits
+          });
         }
         
-        // Reset the alert flag after 5 minutes to allow future enforcements
-        // This is shorter than non-strict limits since we want to continue enforcing strict limits
+        // Reset the alert flag after 5 minutes
         setTimeout(() => {
           alertedDomains.delete(domain);
         }, 300000); // 5 minutes in milliseconds
@@ -416,18 +429,25 @@ async function updateAllActiveTabs() {
       await checkAllTabs();
     }
     
+    // CRITICAL: Do not update time if there's no active session
+    // This prevents counting time when browser is closed
+    if (!currentSessionStartTime) {
+      isUpdating = false;
+      return;
+    }
+    
     if (activeTabs.length === 0) {
       // No active tabs to track
       isUpdating = false;
       return;
     }
-    
+        
     // Update time for all active tabs
     const timeNow = Date.now();
     const timeElapsed = 1000; // Always add exactly 1 second to avoid drift
     
-     // ➡️ CHANGE #1: Calculate time per tab
-     const timePerTab = timeElapsed / activeTabs.length;
+    // Calculate time per tab
+    const timePerTab = timeElapsed / activeTabs.length;
 
     // Process each active tab
     for (const tab of activeTabs) {
@@ -478,7 +498,6 @@ async function updateAllActiveTabs() {
     
     // Update lastActiveTime for the next update
     lastActiveTime = timeNow;
-    lastActiveUpdate = timeNow;
     
   } catch (error) {
     console.log("Error in tab tracking update:", error);
@@ -496,17 +515,18 @@ function startUpdateInterval() {
   
   // Set up a regular interval to update tab time every second
   updateInterval = setInterval(async () => {
-    await updateAllActiveTabs();
+    // Always update time if we have a valid session
+    // The session will ONLY be created when browser is actually open
+    // and it will be reset when browser closes (via onStartup event)
+    if (currentSessionStartTime) {
+      await updateAllActiveTabs();
+    }
   }, 1000);
   
   // Add a separate heartbeat interval to check active tabs regularly
   // This helps recover from any state where tracking might have stopped
   setInterval(async () => {
-    const currentTime = Date.now();
-    if (currentTime - lastActiveUpdate > 5000) {
-      console.log("Heartbeat check - no recent updates, refreshing active tabs");
-      await checkAllTabs();
-    }
+    await checkAllTabs();
   }, 10000);
 }
 
@@ -760,9 +780,11 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }
 });
 
-// Listen for browser startup
+// Listen for browser startup - this event fires when the browser starts
 chrome.runtime.onStartup.addListener(() => {
   console.log("Browser started - initializing session tracking");
+  // Force a new session when browser starts (not continuing from background)
+  currentSessionStartTime = null;
   // Start a new session when the browser starts
   initializeSession();
   // Make sure we check for active tabs immediately
