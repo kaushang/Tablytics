@@ -601,6 +601,8 @@ input:checked + .toggle-slider:before {
   padding: 16px;
   border-radius: 8px;
   margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
 }
 
 .form-group {
@@ -764,6 +766,7 @@ input:checked + .toggle-slider:before {
   justify-content: space-between;
 }
 .reset {
+  gap: 20px;
   margin-bottom: 0px;
 }
 .current-limit {
@@ -1094,6 +1097,7 @@ input:checked + .toggle-slider:before {
 }
 
 .analytics-item {
+  border-radius: 10px;
   display: flex;
   align-items: center;
   padding: 12px;
@@ -1112,8 +1116,7 @@ input:checked + .toggle-slider:before {
   margin-right: 12px;
   font-size: 12px;
 }
-.analytics-list :nth-child(1) .rank, .analytics-list :nth-child(2) .rank, .analytics-list :nth-child(3) .rank {
-  font-size: 18px;
+.analytics-item :nth-child(1), .analytics-item :nth-child(2), .analytics-item :nth-child(3) {
 }
 .time-info {
   margin-left: auto;

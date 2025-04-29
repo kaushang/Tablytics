@@ -37,6 +37,7 @@ function App() {
   const [todayTotalTime, setTodayTotalTime] = useState(0);
   const [currentSessionTime, setCurrentSessionTime] = useState(0);
   const [sessionStartTime, setSessionStartTime] = useState(null);
+  const [dailyTabData, setDailyTabData] = useState({});
   const lastUpdateTime = useRef(Date.now());
   const dropdownRef = useRef(null);
   const menuRef = useRef(null);
@@ -98,7 +99,7 @@ function App() {
               setTodayWebsitesVisited(response.dailyData.websitesVisited || []);
               setTodayTotalTime(response.dailyData.totalTime || 0);
             }
-
+            setDailyTabData(response.dailyData.tabData || {});
             // Update current session time - this is now handled separately
             if (sessionStartTime) {
               const elapsed = Math.floor(Date.now() - sessionStartTime);
@@ -363,19 +364,29 @@ function App() {
     ([domain, limit]) => tabData[domain] && tabData[domain] >= limit
   ).length;
 
+  // Calculate total time spent on all websites visited today (for analytics)
+  const totalDailyTimeTracked = Object.values(dailyTabData).reduce((a, b) => a + b, 0);
+  
+  // Sort the tab data for current session (for dashboard)
   const sortedTabs = Object.entries(tabData)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 10);
+  
+  // Sort daily website data by time spent (for analytics)
+  const sortedDailyTabs = Object.entries(dailyTabData)
     .sort(([, a], [, b]) => b - a)
     .slice(0, 10);
 
   // Prepare data for the pie chart - format data properly for PieChart component
-  const pieChartData = Object.entries(tabData)
+  // Use dailyTabData instead of tabData to show all websites visited today
+  const pieChartData = Object.entries(dailyTabData)
     .map(([domain, time]) => ({
       domain,
       time,
     }))
     .sort((a, b) => b.time - a.time)
     .slice(0, 8); // Limit to top 8 to prevent overcrowding the chart
-
+  
   // Handle navigation menu clicks
   const handleNavigation = (section) => {
     setShowDashboard(false);
@@ -387,6 +398,8 @@ function App() {
       setShowDashboard(true);
     } else if (section === "analytics") {
       setShowAnalytics(true);
+      // Refresh data when switching to analytics tab to get the latest website times
+      getTabData(true);
     } else if (section === "settings") {
       setShowSettings(true);
     }
@@ -698,7 +711,7 @@ function App() {
                 <h2 className="active-tabs">Time Distribution</h2>
                 <div className="timeNrefresh">
                   <div className="total-time">
-                    {formatTime(totalTimeTracked)}
+                    {formatTime(totalDailyTimeTracked)}
                   </div>
                   <button className="refreshBtn" onClick={refresh}>
                     {" "}
@@ -709,7 +722,7 @@ function App() {
               <div className="pie-chart-wrapper" style={{ height: "400px" }}>
                 <PieChart
                   data={pieChartData}
-                  title="Website Time Distribution"
+                  title="Today's Website Time Distribution"
                   refresh={count}
                 />
               </div>
@@ -718,10 +731,10 @@ function App() {
 
           <div className="stats-card">
             <div className="stats-header">
-              <h2 className="active-tabs">Top Websites by Time</h2>
+              <h2 className="active-tabs">Top 10 most used Websites</h2>
             </div>
             <ul className="analytics-list">
-              {sortedTabs.map(([domain, time], index) => (
+              {sortedDailyTabs.map(([domain, time], index) => (
                 <li key={domain} className="analytics-item">
                   <div className="rank">{index + 1}</div>
                   <div className="domain-info">
@@ -739,7 +752,7 @@ function App() {
                   <div className="time-info">
                     <span className="time">{formatTime(time)}</span>
                     <span className="percentage">
-                      ({Math.round((time / totalTimeTracked) * 100)}%)
+                      ({Math.round((time / totalDailyTimeTracked) * 100)}%)
                     </span>
                   </div>
                 </li>
@@ -914,28 +927,28 @@ function App() {
             </div>
           </div>
           <div className="settings-sections">
-            <div className="time-limit-card">
-              <span className="form-label">Reset Session Data</span>
-              <button className="clear-button" onClick={clearData}>
-                <FaTrash />
-                &nbsp; Reset Session
-              </button>
-              <p className="form-help-text reset">
-                Resets the current session time and clears all active tab data
-              </p>
-            </div>
-          </div>
+            <div className="time-limit-card reset">
+              <div>
+                <span className="form-label">Reset Session Data</span>
+                <button className="clear-button" onClick={clearData}>
+                  <FaTrash />
+                  &nbsp; Reset Session
+                </button>
+                <p className="form-help-text reset">
+                  Resets the current session time and clears all active tab data
+                </p>
+              </div>
 
-          <div className="settings-sections">
-            <div className="time-limit-card">
-              <span className="form-label">Reset Today's Data</span>
-              <button className="clear-button" onClick={clearDailyData}>
-                <FaTrash />
-                &nbsp; Reset Today's Data
-              </button>
-              <p className="form-help-text reset">
-                Resets all data collected today while keeping historical data
-              </p>
+              <div>
+                <span className="form-label">Reset Today's Data</span>
+                <button className="clear-button" onClick={clearDailyData}>
+                  <FaTrash />
+                  &nbsp; Reset Today's Data
+                </button>
+                <p className="form-help-text reset">
+                  Resets all data collected today while keeping historical data
+                </p>
+              </div>
             </div>
           </div>
         </div>
