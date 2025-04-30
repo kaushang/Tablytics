@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Tablytics",
   "version": "1.0",
-  "description": "Track your time spent on websites",
+  "description": "Tab Time Tracker",
   "permissions": [
     "tabs",
     "storage",
