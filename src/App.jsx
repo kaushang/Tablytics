@@ -78,6 +78,7 @@ function App() {
   // Function to get latest tab data
   const getTabData = (force = false) => {
     const currentTime = Date.now();
+    console.log("Getting tab data, force:", force);
     // Skip the time check if force=true to allow immediate updates
     if (force || currentTime - lastUpdateTime.current >= 1000) {
       chrome.runtime.sendMessage(
@@ -88,10 +89,24 @@ function App() {
         },
         (response) => {
           if (response) {
+            console.log("Got tab data response:", response);
             setTabData(response.tabData || {});
             setActiveDomain(response.activeDomain);
             setTimeLimits(response.timeLimits || {});
             setStrictLimits(response.strictLimits || {});
+
+            // Update tracking state if needed
+            if (
+              response.isTrackingEnabled !== undefined &&
+              response.isTrackingEnabled !== isTrackingEnabled
+            ) {
+              console.log(
+                "Updating tracking state:",
+                response.isTrackingEnabled
+              );
+              setIsTrackingEnabled(response.isTrackingEnabled);
+            }
+
             if (response.activeTabs) {
               setActiveTabs(response.activeTabs);
             }
@@ -100,10 +115,50 @@ function App() {
               setTodayTotalTime(response.dailyData.totalTime || 0);
             }
             setDailyTabData(response.dailyData.tabData || {});
-            // Update current session time - this is now handled separately
-            if (sessionStartTime) {
-              const elapsed = Math.floor(Date.now() - sessionStartTime);
-              if (isTrackingEnabled) {
+
+            // Handle session time calculation
+            if (!isTrackingEnabled) {
+              // If tracking is disabled, get accurate paused time
+              if (response.currentSessionTime !== undefined) {
+                console.log(
+                  "Using session time from response (tracking disabled):",
+                  response.currentSessionTime
+                );
+                setCurrentSessionTime(response.currentSessionTime);
+              } else {
+                // Double check storage for paused time
+                chrome.storage.local.get(
+                  ["trackingPaused", "persistentSessionTimeAtPause"],
+                  (pauseData) => {
+                    if (
+                      pauseData.trackingPaused &&
+                      pauseData.persistentSessionTimeAtPause
+                    ) {
+                      console.log(
+                        "Using paused session time from storage:",
+                        pauseData.persistentSessionTimeAtPause
+                      );
+                      setCurrentSessionTime(
+                        pauseData.persistentSessionTimeAtPause
+                      );
+                    }
+                  }
+                );
+              }
+            } else {
+              // Update current session time - for active tracking
+              if (response.currentSessionTime !== undefined) {
+                console.log(
+                  "Using session time from response (tracking enabled):",
+                  response.currentSessionTime
+                );
+                setCurrentSessionTime(response.currentSessionTime);
+              } else if (sessionStartTime) {
+                const elapsed = Math.floor(Date.now() - sessionStartTime);
+                console.log(
+                  "Calculating session time from start time:",
+                  elapsed
+                );
                 setCurrentSessionTime(elapsed);
               }
             }
@@ -135,6 +190,8 @@ function App() {
             "isTrackingEnabled",
             "dailyTabData",
             "lastSessionId",
+            "trackingPaused",
+            "persistentSessionTimeAtPause",
           ],
           (result) => {
             if (result.tabData) {
@@ -156,8 +213,20 @@ function App() {
             const storedLastSessionId = result.lastSessionId;
             setLastSessionId(storedLastSessionId);
 
-            // MODIFIED CODE: Don't restart session if extension is loaded
-            if (!sessionResult.sessionId) {
+            // Check if tracking is paused - handle the stored pause time
+            if (result.trackingPaused && result.persistentSessionTimeAtPause) {
+              console.log(
+                "Found paused tracking data:",
+                result.persistentSessionTimeAtPause
+              );
+              // If tracking is paused, use the exact time that was saved at pause
+              setCurrentSessionTime(result.persistentSessionTimeAtPause);
+
+              // Still set the session start time for reference
+              if (sessionResult.sessionStartTime) {
+                setSessionStartTime(sessionResult.sessionStartTime);
+              }
+            } else if (!sessionResult.sessionId) {
               // Only start a new session if there isn't an existing one
               const newSessionId = startNewSession();
               chrome.storage.local.set({ lastSessionId: newSessionId });
@@ -170,6 +239,20 @@ function App() {
               );
               if (result.isTrackingEnabled !== false) {
                 setCurrentSessionTime(elapsed);
+              } else {
+                // Fetch the latest pause time if tracking is disabled
+                chrome.runtime.sendMessage(
+                  { type: "GET_TAB_DATA", forceRefresh: true },
+                  (response) => {
+                    if (response && response.currentSessionTime) {
+                      console.log(
+                        "Setting paused session time from GET_TAB_DATA:",
+                        response.currentSessionTime
+                      );
+                      setCurrentSessionTime(response.currentSessionTime);
+                    }
+                  }
+                );
               }
             }
 
@@ -255,11 +338,25 @@ function App() {
   const clearData = () => {
     chrome.runtime.sendMessage({ type: "CLEAR_DATA" }, (response) => {
       if (response && response.success) {
+        console.log("Session reset successful, response:", response);
+
+        // Reset all frontend state
         setTabData({});
         setActiveDomain(null);
 
-        // Start a new session
-        startNewSession();
+        // Update with new session data from background
+        if (response.sessionStartTime) {
+          console.log("Setting new session time:", response.sessionStartTime);
+          setSessionStartTime(response.sessionStartTime);
+        }
+
+        // Reset current session time to 0
+        setCurrentSessionTime(0);
+
+        // Force a data refresh from background
+        setTimeout(() => {
+          getTabData(true);
+        }, 100);
       }
     });
   };
@@ -284,10 +381,83 @@ function App() {
         if (response && response.success) {
           setIsTrackingEnabled(newTrackingState);
 
-          // If enabling tracking, reset session start time
-          if (newTrackingState) {
-            startNewSession();
-          }
+          // We need a small delay to make sure background.js has time to process the toggle
+          // This is especially important when pausing tracking to ensure the pauseTime is saved
+          setTimeout(() => {
+            console.log(
+              "Getting updated data after toggling tracking:",
+              newTrackingState
+            );
+
+            // Get the latest updated data from background.js immediately
+            chrome.runtime.sendMessage(
+              {
+                type: "GET_TAB_DATA",
+                forceRefresh: true,
+              },
+              (dataResponse) => {
+                if (dataResponse) {
+                  console.log("Got data response after toggle:", dataResponse);
+
+                  // If tracking is now disabled, we should have a paused session time
+                  if (!newTrackingState) {
+                    // Check paused state in storage directly to be certain we get the right time
+                    chrome.storage.local.get(
+                      ["trackingPaused", "persistentSessionTimeAtPause"],
+                      (pauseData) => {
+                        if (
+                          pauseData.trackingPaused &&
+                          pauseData.persistentSessionTimeAtPause
+                        ) {
+                          console.log(
+                            "Setting paused time from storage:",
+                            pauseData.persistentSessionTimeAtPause
+                          );
+                          setCurrentSessionTime(
+                            pauseData.persistentSessionTimeAtPause
+                          );
+                        } else if (dataResponse.currentSessionTime) {
+                          console.log(
+                            "Setting paused time from response:",
+                            dataResponse.currentSessionTime
+                          );
+                          setCurrentSessionTime(
+                            dataResponse.currentSessionTime
+                          );
+                        }
+                      }
+                    );
+                  } else {
+                    // For enabled tracking, use time from background
+                    if (dataResponse.sessionStartTime) {
+                      setSessionStartTime(dataResponse.sessionStartTime);
+                      // Use the exact current session time from background
+                      if (dataResponse.currentSessionTime) {
+                        setCurrentSessionTime(dataResponse.currentSessionTime);
+                      } else {
+                        // Calculate it from start time
+                        const elapsed = Math.floor(
+                          Date.now() - dataResponse.sessionStartTime
+                        );
+                        setCurrentSessionTime(elapsed);
+                      }
+                    }
+                  }
+
+                  // Update other data as well
+                  setTabData(dataResponse.tabData || {});
+                  setActiveDomain(dataResponse.activeDomain);
+                  if (dataResponse.dailyData) {
+                    setTodayWebsitesVisited(
+                      dataResponse.dailyData.websitesVisited || []
+                    );
+                    setTodayTotalTime(dataResponse.dailyData.totalTime || 0);
+                    setDailyTabData(dataResponse.dailyData.tabData || {});
+                  }
+                }
+              }
+            );
+          }, 100); // Small delay to ensure background.js has processed the toggle
         }
       }
     );
@@ -365,28 +535,29 @@ function App() {
   ).length;
 
   // Calculate total time spent on all websites visited today (for analytics)
-  const totalDailyTimeTracked = Object.values(dailyTabData).reduce((a, b) => a + b, 0);
-  
+  const totalDailyTimeTracked = Object.values(dailyTabData).reduce(
+    (a, b) => a + b,
+    0
+  );
+
   // Sort the tab data for current session (for dashboard)
   const sortedTabs = Object.entries(tabData)
     .sort(([, a], [, b]) => b - a)
     .slice(0, 10);
-  
+
   // Sort daily website data by time spent (for analytics)
   const sortedDailyTabs = Object.entries(dailyTabData)
     .sort(([, a], [, b]) => b - a)
     .slice(0, 10);
-
   // Prepare data for the pie chart - format data properly for PieChart component
   // Use dailyTabData instead of tabData to show all websites visited today
-  const pieChartData = Object.entries(dailyTabData)
-    .map(([domain, time]) => ({
-      domain,
-      time,
-    }))
-    .sort((a, b) => b.time - a.time)
-    .slice(0, 8); // Limit to top 8 to prevent overcrowding the chart
-  
+  const pieChartData = Object.entries(dailyTabData).map(([domain, time]) => ({
+    domain,
+    time,
+  }))
+  .sort((a, b) => b.time - a.time)
+  .slice(0, 10); // Limit to top 8 to prevent overcrowding the chart
+
   // Handle navigation menu clicks
   const handleNavigation = (section) => {
     setShowDashboard(false);
@@ -734,29 +905,32 @@ function App() {
               <h2 className="active-tabs">Top 10 most used Websites</h2>
             </div>
             <ul className="analytics-list">
-              {sortedDailyTabs.map(([domain, time], index) => (
-                <li key={domain} className="analytics-item">
-                  <div className="rank">{index + 1}</div>
-                  <div className="domain-info">
-                    <img
-                      src={`https://www.google.com/s2/favicons?domain=${domain}&sz=32`}
-                      alt={`${domain} icon`}
-                      className="favicon"
-                      onError={(e) => {
-                        e.target.src =
-                          'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🌐</text></svg>';
-                      }}
-                    />
-                    <span className="domain">{domain}</span>
-                  </div>
-                  <div className="time-info">
-                    <span className="time">{formatTime(time)}</span>
-                    <span className="percentage">
-                      ({Math.round((time / totalDailyTimeTracked) * 100)}%)
-                    </span>
-                  </div>
-                </li>
-              ))}
+              {sortedDailyTabs.map(([domain, time], index) => {
+                const adjustedTime = time * 2;
+                return (
+                  <li key={domain} className="analytics-item">
+                    <div className="rank">{index + 1}</div>
+                    <div className="domain-info">
+                      <img
+                        src={`https://www.google.com/s2/favicons?domain=${domain}&sz=32`}
+                        alt={`${domain} icon`}
+                        className="favicon"
+                        onError={(e) => {
+                          e.target.src =
+                            'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🌐</text></svg>';
+                        }}
+                      />
+                      <span className="domain">{domain}</span>
+                    </div>
+                    <div className="time-info">
+                      <span className="time">{formatTime(adjustedTime)}</span>
+                      <span className="percentage">
+                        ({Math.round((time / totalDailyTimeTracked) * 100)}%)
+                      </span>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         </div>

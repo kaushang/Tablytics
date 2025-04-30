@@ -1,3 +1,4 @@
+
 let activeTabId = null;
 let lastActiveTime = null;
 let tabData = {};
@@ -426,6 +427,7 @@ async function cleanupClosedTabs() {
 // Update active tabs time
 async function updateAllActiveTabs() {
   // Use a lock to prevent concurrent updates
+  // CRITICAL: If tracking is disabled, do not update ANY time data
   if (isUpdating || !isTrackingEnabled) return;
 
   isUpdating = true;
@@ -517,6 +519,8 @@ async function updateAllActiveTabs() {
           // Update time
           tabData[domain] += timeElapsed;
 
+          // Update the daily data with the SAME time value (not divided by tabs)
+          // This ensures consistency between session time and analytics time
           updateDailyData(domain, timePerTab);
 
           // Check time limit
@@ -684,16 +688,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           const todayStr = getTodayDateString();
           const todayData = dailyTabData[todayStr] || { websitesVisited: [], totalTime: 0 };
 
-          // Send response with all data
-          sendResponse({ 
-            tabData: tabData,
-            activeDomain: activeDomain,
-            timeLimits: timeLimits,
-            strictLimits: strictLimits,
-            activeTabs: activeTabs,
-            dailyData: todayData,
-            sessionStartTime: currentSessionStartTime,
-            currentSessionTime: currentSessionStartTime ? Date.now() - currentSessionStartTime : 0
+          // Check if tracking is paused - if so, use the stored pausedAt time
+          chrome.storage.local.get(['trackingPaused', 'persistentSessionTimeAtPause'], (pauseData) => {
+            let sessionTime = 0;
+            
+            if (pauseData.trackingPaused && pauseData.persistentSessionTimeAtPause) {
+              // If tracking is paused, use the exact time when it was paused
+              sessionTime = pauseData.persistentSessionTimeAtPause;
+              console.log("Using paused session time:", sessionTime);
+            } else if (currentSessionStartTime) {
+              // If tracking is active, calculate the current time
+              sessionTime = Date.now() - currentSessionStartTime;
+            }
+            
+            // Send response with all data
+            sendResponse({ 
+              tabData: tabData,
+              activeDomain: activeDomain,
+              timeLimits: timeLimits,
+              strictLimits: strictLimits,
+              activeTabs: activeTabs,
+              dailyData: todayData,
+              sessionStartTime: currentSessionStartTime,
+              currentSessionTime: sessionTime,
+              isTrackingEnabled: isTrackingEnabled
+            });
           });
         });
       });
@@ -702,40 +721,80 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const todayStr = getTodayDateString();
       const todayData = dailyTabData[todayStr] || { websitesVisited: [], totalTime: 0 };
 
-      // Send current data without refresh
-      sendResponse({ 
-        tabData: tabData,
-        activeDomain: activeDomain,
-        timeLimits: timeLimits,
-        strictLimits: strictLimits,
-        activeTabs: activeTabs,
-        dailyData: todayData,
-        sessionStartTime: currentSessionStartTime,
-        currentSessionTime: currentSessionStartTime ? Date.now() - currentSessionStartTime : 0
+      // Check if tracking is paused - if so, use the stored pausedAt time
+      chrome.storage.local.get(['trackingPaused', 'persistentSessionTimeAtPause'], (pauseData) => {
+        let sessionTime = 0;
+        
+        if (pauseData.trackingPaused && pauseData.persistentSessionTimeAtPause) {
+          // If tracking is paused, use the exact time when it was paused
+          sessionTime = pauseData.persistentSessionTimeAtPause;
+          console.log("Using paused session time (non-force refresh):", sessionTime);
+        } else if (currentSessionStartTime) {
+          // If tracking is active, calculate the current time
+          sessionTime = Date.now() - currentSessionStartTime;
+        }
+        
+        // Send current data without refresh
+        sendResponse({ 
+          tabData: tabData,
+          activeDomain: activeDomain,
+          timeLimits: timeLimits,
+          strictLimits: strictLimits,
+          activeTabs: activeTabs,
+          dailyData: todayData,
+          sessionStartTime: currentSessionStartTime,
+          currentSessionTime: sessionTime,
+          isTrackingEnabled: isTrackingEnabled
+        });
       });
     }
     return true;
   } else if (request.type === 'CLEAR_DATA') {
-    // Reset session state
+    // Completely reset session state
     tabData = {};
     activeDomain = null;
     alertedDomains.clear();
-
-    // Keep tracking the current tab
+    
+    // Start a brand new session
+    const newSessionStartTime = Date.now();
+    const newSessionId = `session_${newSessionStartTime}`;
+    currentSessionStartTime = newSessionStartTime;
+    
+    // Keep tracking active if it was already enabled
     if (isTrackingEnabled) {
       lastActiveTime = Date.now();
       lastActiveUpdate = Date.now();
     } else {
       activeTabId = null;
       lastActiveTime = null;
+      
+      // If tracking is paused, we need to reset the pause data too
+      chrome.storage.local.set({
+        trackingPaused: true,
+        trackingPausedAt: Date.now(),
+        persistentSessionTimeAtPause: 0  // Reset to 0 for the new session
+      });
     }
 
-    // Clear session storage
+    // Save the new session data in both storages
     chrome.storage.local.set({ 
       tabData: {}, 
-      activeDomain: null 
+      activeDomain: null,
+      persistentSessionStartTime: newSessionStartTime,
+      persistentSessionId: newSessionId
     }, () => {
-      sendResponse({ success: true });
+      sendResponse({ 
+        success: true,
+        sessionStartTime: newSessionStartTime,
+        sessionId: newSessionId,
+        currentSessionTime: 0
+      });
+    });
+    
+    // Save to session storage too
+    chrome.storage.session.set({
+      sessionStartTime: newSessionStartTime,
+      sessionId: newSessionId
     });
 
     // Refresh active tabs
@@ -788,23 +847,78 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true;
   } else if (request.type === 'TOGGLE_TRACKING') {
+    // Store previous state to determine if we're turning tracking on
+    const wasTrackingDisabled = !isTrackingEnabled;
+    
+    // Update tracking state
     isTrackingEnabled = request.enabled;
+    
+    console.log(`Tracking ${isTrackingEnabled ? 'enabled' : 'disabled'}`);
 
-    // If tracking was disabled, reset the current active session
     if (!isTrackingEnabled) {
-      // Keep the tab IDs but don't track time
+      // When disabling tracking, save the current time as the pause time
+      console.log("Tracking paused - saving current progress");
+      
+      // Save the exact time tracking was paused
+      const pauseTime = Date.now();
+      chrome.storage.local.set({ 
+        trackingPausedAt: pauseTime,
+        trackingPaused: true,
+        persistentSessionTimeAtPause: currentSessionStartTime ? pauseTime - currentSessionStartTime : 0
+      });
+      
+      // Stop all time tracking by setting these to null
       lastActiveTime = null;
-    } else {
-      // If tracking was enabled, start a new session
-      lastActiveTime = Date.now();
-      lastActiveUpdate = Date.now();
-
-      // Start a new session if there isn't one
-      if (!currentSessionStartTime) {
-        startNewSession();
-      }
-
-      checkAllTabs();
+      lastActiveUpdate = null;
+    } else if (wasTrackingDisabled) {
+      // If we're re-enabling tracking, resume with the adjusted session
+      console.log("Tracking resumed - continuing from where we left off");
+      
+      // Get the pause information
+      chrome.storage.local.get(['trackingPausedAt', 'persistentSessionTimeAtPause', 'trackingPaused'], (result) => {
+        if (result.trackingPaused && result.trackingPausedAt && result.persistentSessionTimeAtPause) {
+          console.log("Found pause data, resuming tracking from pause point");
+          
+          // Calculate a new adjusted start time based on the accumulated time before pause
+          // This ensures the timer continues from exactly where it left off
+          const now = Date.now();
+          const newAdjustedStartTime = now - result.persistentSessionTimeAtPause;
+          
+          // Use the adjusted start time as the new session start
+          currentSessionStartTime = newAdjustedStartTime;
+          
+          // Save the new adjusted start time to both storages
+          chrome.storage.local.set({
+            persistentSessionStartTime: newAdjustedStartTime,
+            persistentSessionId: `session_${newAdjustedStartTime}`,
+            // Clear pause data
+            trackingPaused: false,
+            trackingPausedAt: null
+          });
+          
+          chrome.storage.session.set({
+            sessionStartTime: newAdjustedStartTime,
+            sessionId: `session_${newAdjustedStartTime}`
+          });
+          
+          lastActiveTime = now;
+          lastActiveUpdate = now;
+        } else {
+          // If no pause data found for some reason, just continue with existing session or start a new one
+          console.log("No pause data found, continuing with existing session or starting new one");
+          
+          lastActiveTime = Date.now();
+          lastActiveUpdate = Date.now();
+          
+          if (!currentSessionStartTime) {
+            // Start a new session if we don't have one
+            startNewSession();
+          }
+        }
+        
+        // Always refresh tabs when tracking is enabled
+        checkAllTabs();
+      });
     }
 
     chrome.storage.local.set({ isTrackingEnabled }, () => {

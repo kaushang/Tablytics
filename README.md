@@ -4,16 +4,10 @@ Want Analytics about your time spent on tabs?  **Tablytics** is a lightweight an
 
 ## 🚀 What Does It Do?
 
-- Tracks total browsing time and per-tab usage.
-- Lets users set time limits for specific websites.
-- Supports *Strict Enforcement* to automatically close tabs after time is up.
-- Notifies users when their set time limit is reached.
-- Provides an option to reset all tracked time.
-- Allows enabling/disabling time tracking.
-- Supports **Dark Mode and Light Mode** for user preference.
-- Offers a dedicated **Analytics Tab** to visualize your tab usage.
-
-Whether you're studying, working, or just browsing — Tablytics helps you stay in control of your time.
+Tablytics is a Chrome extension that helps you monitor and manage your time on browser tabs.  
+It tracks your total browsing time, usage per tab, and daily activity — including top websites and total time spent.  
+You can set time limits for specific websites, receive alerts, and even auto-close distracting tabs.  
+With built-in visual analytics and support for dark/light mode, Whether you're studying, working, or just browsing — Tablytics helps you stay productive and in charge of your time.
 
 ---
 
@@ -22,14 +16,16 @@ Whether you're studying, working, or just browsing — Tablytics helps you stay 
 - ⏲️ **Track Browsing Time**  
   View total time spent and how much time you've used on each active tab.
 
-- ⛔ **Set Time Limits**  
-  Choose a website and set how long you want to stay on it.
+- 📅 **Today's Summary**  
+  - **Sites Visited Today**: See how many unique websites you've visited during the current day.  
+  - **Total Time Today**: Tracks your total time spent in the browser today.  
+  - **Top 10 Most Used Websites**: Displays a sorted list of your most visited websites for the day based on time spent.
+
+- ⛔ **Set Time Limits And Notifications**  
+  Choose a website and set how long you want to stay on it and get notified when you've reached your time limit on that site.
 
 - 🔒 **Strict Enforcement**  
   Enable this feature to automatically close the tab when time is up.
-
-- 🔔 **Time Limit Notifications**  
-  Get notified when you've reached your time limit on a site.
 
 - 🔁 **Reset Time**  
   Start fresh at any time by resetting all tracked time back to 0.
@@ -41,15 +37,16 @@ Whether you're studying, working, or just browsing — Tablytics helps you stay 
   Choose between a modern dark theme or a classic light theme for comfortable viewing.
 
 - 📊 **Visual Analytics Tab**  
-  Analyze your browsing habits visually in a pie chart.  
+  Analyze your browsing habits visually in a pie chart.
+
 
 ---
 
 ## 🧑‍🏫 Use Cases
 
-- **Students Studying**: Track how long you’ve studied and receive notifications when your planned session ends.
-- **Break Monitoring**: Limit time on entertainment sites like YouTube or Netflix during breaks.
-- **Self-awareness**: Understand where your time goes and become more mindful of your browsing habits.
+- **Focused Study Sessions**: Track how long you’ve studied and receive notifications when your planned session ends.
+- **Productive Breaks**: Limit time on entertainment sites like YouTube or Netflix during breaks.
+- **Digital awareness**: Understand where your time goes and become more mindful of your browsing habits.
 
 ---
 
@@ -70,28 +67,27 @@ Whether you're studying, working, or just browsing — Tablytics helps you stay 
    You're all set to use the extension.
    
 ---
-
-## ⚙️ How to use
+## ⚙️ How to Use
 
 1. **Set Time Limits**  
-   - Go to **Settings > Set Website Time Limit**.
-   - Select a website from the dropdown.
-   - Enter time in minutes.
-   - (Optional) Enable **Strict Enforcement** to auto-close the tab.
+   - Go to **Settings > Set Website Time Limit**.  
+   - Choose a website and enter the time limit (in minutes).  
+   - Optionally enable **Strict Enforcement** to auto-close the tab when time is up.
 
-2. **Monitor Your Time**  
-   - View the total time tracked and time per site from the **Dashboard**.
-   - Tabs will be listed with progress bars.
+2. **Track Your Activity**  
+   - Head to the **Dashboard** to view total time spent and time per website.  
+   - Sites are displayed with progress bars for visual tracking.
 
-3. **Analytics Tab**  
-   - Access the **Analytics Tab** from the main menu.
-   - View your tab activity in visual form: pie charts.
-     
-4. **Reset Anytime**  
-   - Click the **Reset** button to clear all current time tracking.
- 
-5. **Enable or Disable Tracking**  
-   - Enable the **Enable time tracking** button to allow the extension track your time and Disable the button if you don't want the Extension track your time.
+3. **Analyze Your Usage**  
+   - Open the **Analytics Tab** from the main menu.  
+   - View insights like daily time spent, top 10 websites, and usage pie charts.
+
+4. **Reset Tracking Data**  
+   - Use the **Reset** button anytime to clear all recorded browsing time.
+
+5. **Toggle Tracking On/Off**  
+   - Use the toggle switch to enable or disable time tracking as needed.
+
 
 ---
 

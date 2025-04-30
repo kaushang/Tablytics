@@ -908,7 +908,7 @@ input:checked + .toggle-slider:before {
 }
 
 .dark-theme .time-limit-indicator {
-  background-color: #2a2a2a;
+  background-color: rgba(198, 40, 40, 0.5);
   color: #b0b0b0;
 }
 
@@ -1115,8 +1115,6 @@ input:checked + .toggle-slider:before {
   font-weight: bold;
   margin-right: 12px;
   font-size: 12px;
-}
-.analytics-item :nth-child(1), .analytics-item :nth-child(2), .analytics-item :nth-child(3) {
 }
 .time-info {
   margin-left: auto;
