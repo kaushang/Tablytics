@@ -1013,7 +1013,7 @@ input:checked + .toggle-slider:before {
   position: fixed;
   top: 0;
   right: -220px;
-  width: 226px;
+  width: 220px;
   height: 100%;
   background-color: white;
   box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
