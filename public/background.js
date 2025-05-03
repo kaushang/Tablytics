@@ -1,4 +1,3 @@
-
 let activeTabId = null;
 let lastActiveTime = null;
 let tabData = {};
@@ -15,6 +14,8 @@ let dailyTabData = {}; // Store daily tab data
 let lastTabCheck = 0; // Last time we did a full tab check
 let currentSessionStartTime = null; // Track when the current session started
 let isBrowserJustStarted = false; // Flag to identify browser startup
+let lastUpdateTime = Date.now();
+let sessionStartTime = Date.now(); // Add this to track session start
 
 // Function to get today's date in YYYY-MM-DD format
 const getTodayDateString = () => {
@@ -51,7 +52,6 @@ function startNewSession() {
   currentSessionStartTime = newSessionStartTime;
 
   console.log("New session started:", newSessionId, "at", new Date(newSessionStartTime));
-
   return newSessionId;
 }
 
@@ -112,9 +112,6 @@ chrome.storage.local.get([
 
     // Check for and remove any domains that don't have open tabs
     cleanupClosedTabs();
-
-    // DON'T reset session time or initialize a new session here
-    // This prevents losing session data when extension is reloaded
 
     // Initial active tab check to detect current state
     checkAllTabs();
@@ -334,11 +331,6 @@ const checkTimeLimit = async (domain, timeSpent) => {
 
       // Mark domain as alerted
       alertedDomains.add(domain);
-
-      // Reset alert after 1 hour for non-strict limits
-      setTimeout(() => {
-        alertedDomains.delete(domain);
-      }, 3600000); // 1 hour in milliseconds
     }
   }
 };
@@ -439,19 +431,17 @@ async function updateAllActiveTabs() {
       await checkAllTabs();
     }
 
-    // CRITICAL: Do not update time if there's no active session
-    // This prevents counting time when browser is closed
     if (!currentSessionStartTime) {
       // Attempt to recover session data if we should have an active session
       if (activeTabs.length > 0) {
         console.log("No session data but active tabs detected - attempting to recover session data");
-        
+
         // Try to restore from persistent storage
         chrome.storage.local.get(['persistentSessionStartTime', 'persistentSessionId'], (result) => {
           if (result.persistentSessionStartTime) {
             console.log("Recovered session from persistent storage:", new Date(result.persistentSessionStartTime));
             currentSessionStartTime = result.persistentSessionStartTime;
-            
+
             // Re-save to both storage types to ensure consistency
             chrome.storage.local.set({
               persistentSessionStartTime: result.persistentSessionStartTime,
@@ -518,9 +508,6 @@ async function updateAllActiveTabs() {
 
           // Update time
           tabData[domain] += timeElapsed;
-
-          // Update the daily data with the SAME time value (not divided by tabs)
-          // This ensures consistency between session time and analytics time
           updateDailyData(domain, timePerTab);
 
           // Check time limit
@@ -539,7 +526,7 @@ async function updateAllActiveTabs() {
       persistentSessionStartTime: currentSessionStartTime,
       persistentSessionId: `session_${currentSessionStartTime}`
     });
-    
+
     // Keep session storage in sync as well
     await chrome.storage.session.set({
       sessionStartTime: currentSessionStartTime,
@@ -565,9 +552,6 @@ function startUpdateInterval() {
 
   // Set up a regular interval to update tab time every second
   updateInterval = setInterval(async () => {
-    // Always update time if we have a valid session
-    // The session will ONLY be created when browser is actually open
-    // and it will be reset when browser closes (via onStartup event)
     if (currentSessionStartTime) {
       await updateAllActiveTabs();
     }
@@ -691,7 +675,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           // Check if tracking is paused - if so, use the stored pausedAt time
           chrome.storage.local.get(['trackingPaused', 'persistentSessionTimeAtPause'], (pauseData) => {
             let sessionTime = 0;
-            
+
             if (pauseData.trackingPaused && pauseData.persistentSessionTimeAtPause) {
               // If tracking is paused, use the exact time when it was paused
               sessionTime = pauseData.persistentSessionTimeAtPause;
@@ -700,7 +684,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               // If tracking is active, calculate the current time
               sessionTime = Date.now() - currentSessionStartTime;
             }
-            
+
             // Send response with all data
             sendResponse({ 
               tabData: tabData,
@@ -724,7 +708,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       // Check if tracking is paused - if so, use the stored pausedAt time
       chrome.storage.local.get(['trackingPaused', 'persistentSessionTimeAtPause'], (pauseData) => {
         let sessionTime = 0;
-        
+
         if (pauseData.trackingPaused && pauseData.persistentSessionTimeAtPause) {
           // If tracking is paused, use the exact time when it was paused
           sessionTime = pauseData.persistentSessionTimeAtPause;
@@ -733,7 +717,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           // If tracking is active, calculate the current time
           sessionTime = Date.now() - currentSessionStartTime;
         }
-        
+
         // Send current data without refresh
         sendResponse({ 
           tabData: tabData,
@@ -754,12 +738,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     tabData = {};
     activeDomain = null;
     alertedDomains.clear();
-    
+
     // Start a brand new session
     const newSessionStartTime = Date.now();
     const newSessionId = `session_${newSessionStartTime}`;
     currentSessionStartTime = newSessionStartTime;
-    
+
     // Keep tracking active if it was already enabled
     if (isTrackingEnabled) {
       lastActiveTime = Date.now();
@@ -767,7 +751,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     } else {
       activeTabId = null;
       lastActiveTime = null;
-      
+
       // If tracking is paused, we need to reset the pause data too
       chrome.storage.local.set({
         trackingPaused: true,
@@ -790,7 +774,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         currentSessionTime: 0
       });
     });
-    
+
     // Save to session storage too
     chrome.storage.session.set({
       sessionStartTime: newSessionStartTime,
@@ -825,6 +809,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Update time limit for a domain
     const { domain, limit, strict } = request;
 
+    if (alertedDomains.has(domain)) {
+      console.log(`Clearing previous alert flag for ${domain} - new notifications will appear`);
+      alertedDomains.delete(domain);
+    }
+
     if (limit) {
       timeLimits[domain] = limit;
       // Update strict limit status
@@ -833,10 +822,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       } else {
         delete strictLimits[domain];
       }
+      console.log(`Set ${strict ? 'strict ' : ''}time limit for ${domain} to ${formatTime(limit)}`);
     } else {
       // If limit is removed, remove both regular and strict limits
       delete timeLimits[domain];
       delete strictLimits[domain];
+      console.log(`Removed time limit for ${domain}`);
     }
 
     chrome.storage.local.set({ 
@@ -849,16 +840,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.type === 'TOGGLE_TRACKING') {
     // Store previous state to determine if we're turning tracking on
     const wasTrackingDisabled = !isTrackingEnabled;
-    
+
     // Update tracking state
     isTrackingEnabled = request.enabled;
-    
+
     console.log(`Tracking ${isTrackingEnabled ? 'enabled' : 'disabled'}`);
 
     if (!isTrackingEnabled) {
       // When disabling tracking, save the current time as the pause time
       console.log("Tracking paused - saving current progress");
-      
+
       // Save the exact time tracking was paused
       const pauseTime = Date.now();
       chrome.storage.local.set({ 
@@ -866,27 +857,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         trackingPaused: true,
         persistentSessionTimeAtPause: currentSessionStartTime ? pauseTime - currentSessionStartTime : 0
       });
-      
+
       // Stop all time tracking by setting these to null
       lastActiveTime = null;
       lastActiveUpdate = null;
     } else if (wasTrackingDisabled) {
       // If we're re-enabling tracking, resume with the adjusted session
       console.log("Tracking resumed - continuing from where we left off");
-      
+
       // Get the pause information
       chrome.storage.local.get(['trackingPausedAt', 'persistentSessionTimeAtPause', 'trackingPaused'], (result) => {
         if (result.trackingPaused && result.trackingPausedAt && result.persistentSessionTimeAtPause) {
           console.log("Found pause data, resuming tracking from pause point");
-          
+
           // Calculate a new adjusted start time based on the accumulated time before pause
           // This ensures the timer continues from exactly where it left off
           const now = Date.now();
           const newAdjustedStartTime = now - result.persistentSessionTimeAtPause;
-          
+
           // Use the adjusted start time as the new session start
           currentSessionStartTime = newAdjustedStartTime;
-          
+
           // Save the new adjusted start time to both storages
           chrome.storage.local.set({
             persistentSessionStartTime: newAdjustedStartTime,
@@ -895,27 +886,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             trackingPaused: false,
             trackingPausedAt: null
           });
-          
+
           chrome.storage.session.set({
             sessionStartTime: newAdjustedStartTime,
             sessionId: `session_${newAdjustedStartTime}`
           });
-          
+
           lastActiveTime = now;
           lastActiveUpdate = now;
         } else {
           // If no pause data found for some reason, just continue with existing session or start a new one
           console.log("No pause data found, continuing with existing session or starting new one");
-          
+
           lastActiveTime = Date.now();
           lastActiveUpdate = Date.now();
-          
+
           if (!currentSessionStartTime) {
             // Start a new session if we don't have one
             startNewSession();
           }
         }
-        
+
         // Always refresh tabs when tracking is enabled
         checkAllTabs();
       });
@@ -945,14 +936,14 @@ chrome.runtime.onStartup.addListener(() => {
   console.log("Browser started - initializing session tracking");
   // Force a new session when browser starts (not continuing from background)
   currentSessionStartTime = null;
-  
+
   // Set our browser startup flag to true - this will prevent restoration of old sessions
   isBrowserJustStarted = true;
-  
+
   // Record browser startup time
   const startupTime = Date.now();
   chrome.storage.local.set({ lastBrowserStartTime: startupTime });
-  
+
   // Start a new session when the browser starts
   initializeSession();
   // Make sure we check for active tabs immediately
@@ -962,7 +953,7 @@ chrome.runtime.onStartup.addListener(() => {
 // When the extension is about to be unloaded (browser close or extension disable)
 chrome.runtime.onSuspend.addListener(() => {
   console.log("Browser closing - recording shutdown time");
-  
+
   // Record the time of browser closure
   const closeTime = Date.now();
   chrome.storage.local.set({ lastBrowserCloseTime: closeTime });
@@ -976,41 +967,41 @@ cleanupClosedTabs();
 chrome.storage.local.get(['lastBrowserCloseTime', 'extensionReloadCount', 'persistentSessionStartTime', 'persistentSessionId'], (result) => {
   if (isBrowserJustStarted) {
     console.log("Browser startup detected - resetting session time to 0");
-    
+
     // On browser startup, we reset everything
     currentSessionStartTime = null;
-    
+
     // Reset the reload counter on browser startup
     chrome.storage.local.set({ extensionReloadCount: 0 });
-    
+
     // Clear session data from storage
     chrome.storage.local.remove(['persistentSessionStartTime', 'persistentSessionId']);
     chrome.storage.session.remove(['sessionStartTime', 'sessionId']);
-    
+
     // Initialize a fresh session
     initializeSession();
-    
+
     // Reset the startup flag
     isBrowserJustStarted = false;
-    
+
     // Start tracking
     startUpdateInterval();
     checkAllTabs();
   } else {
     console.log("Extension reload detected - preserving current session");
-    
+
     // IMPORTANT: Always preserve existing session data on extension reload
     if (result.persistentSessionStartTime && result.persistentSessionId) {
       // Restore session from previous extension load
       console.log(`Restoring session ${result.persistentSessionId} with start time ${new Date(result.persistentSessionStartTime)}`);
       currentSessionStartTime = result.persistentSessionStartTime;
-      
+
       // Make sure session storage is also updated for consistency
       chrome.storage.session.set({
         sessionStartTime: result.persistentSessionStartTime,
         sessionId: result.persistentSessionId
       });
-      
+
       // Verify the session data was properly saved to local storage
       // This ensures it's available for the next extension reload
       chrome.storage.local.set({
@@ -1023,7 +1014,6 @@ chrome.storage.local.get(['lastBrowserCloseTime', 'extensionReloadCount', 'persi
         if (sessionResult.sessionStartTime && sessionResult.sessionId) {
           console.log("Restoring session from current browser session:", sessionResult.sessionId);
           currentSessionStartTime = sessionResult.sessionStartTime;
-          
           // Save to persistent storage for future reloads
           chrome.storage.local.set({
             persistentSessionStartTime: sessionResult.sessionStartTime,
@@ -1037,7 +1027,6 @@ chrome.storage.local.get(['lastBrowserCloseTime', 'extensionReloadCount', 'persi
         }
       });
     }
-    
     // Always start interval and check tabs
     startUpdateInterval();
     checkAllTabs();

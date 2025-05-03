@@ -44,6 +44,23 @@ function App() {
   const [count, setCount] = useState(0);
   const [lastSessionId, setLastSessionId] = useState(null);
 
+  useEffect(() => {
+    chrome.storage.local.get(
+      [
+        "tabData",
+        "activeDomain",
+        "timeLimits",
+        "strictLimits",
+        "isTrackingEnabled",
+      ],
+      (result) => {
+        if (result.tabData) {
+          setTabData(result.tabData);
+        }
+      }
+    );
+  });
+
   // Function to get today's date in YYYY-MM-DD format
   const getTodayDateString = () => {
     const today = new Date();
@@ -551,12 +568,13 @@ function App() {
     .slice(0, 10);
   // Prepare data for the pie chart - format data properly for PieChart component
   // Use dailyTabData instead of tabData to show all websites visited today
-  const pieChartData = Object.entries(dailyTabData).map(([domain, time]) => ({
-    domain,
-    time,
-  }))
-  .sort((a, b) => b.time - a.time)
-  .slice(0, 10); // Limit to top 8 to prevent overcrowding the chart
+  const pieChartData = Object.entries(dailyTabData)
+    .map(([domain, time]) => ({
+      domain,
+      time,
+    }))
+    .sort((a, b) => b.time - a.time)
+    .slice(0, 10); // Limit to top 10 to prevent overcrowding the chart
 
   // Handle navigation menu clicks
   const handleNavigation = (section) => {
