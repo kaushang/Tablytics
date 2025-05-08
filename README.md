@@ -52,16 +52,11 @@ With built-in visual analytics and support for dark/light mode, Whether you're s
 
 ## 📂 How to Install the Extension
 
-1. **Download the Extension**  
-   Download the repository as a zip and then extract it in your computer.
+1. **Go to Chrome Web Store**  
+   Go to Chrome Web Store and search for 'Tablytics'.
 
 2. **Install the Extension**  
-   Load the extension into Chrome:
-   - Type `chrome://extensions` in the search bar to open the Extensions settings.
-   - Enable **Developer Mode**.
-   - Select **Load Unpacked**.
-   - Navigate to the extracted folder.
-   - Open your extension folder → Select **dist** folder.
+   Click on the extension and click 'Get'.
 
 2. **All Set**  
    You're all set to use the extension.
@@ -87,7 +82,7 @@ With built-in visual analytics and support for dark/light mode, Whether you're s
 
 5. **Toggle Tracking On/Off**  
    - Use the toggle switch to enable or disable time tracking as needed.
-
+ 
 
 ---
 
