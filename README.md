@@ -14,7 +14,7 @@ With built-in visual analytics and support for dark/light mode, Whether you're s
 ## 🔥 Features
 
 - ⏲️ **Track Browsing Time**  
-  View total time spent and how much time you've used on each active tab.
+  Tracks total time spent and how much time you've spent on each tab individually.
 
 - 📅 **Today's Summary**  
   - **Sites Visited Today**: See how many unique websites you've visited during the current day.  
@@ -37,7 +37,7 @@ With built-in visual analytics and support for dark/light mode, Whether you're s
   Choose between a modern dark theme or a classic light theme for comfortable viewing.
 
 - 📊 **Visual Analytics Tab**  
-  Analyze your browsing habits visually in a pie chart.
+  The pie chart highlights top 10 websites by time spent, making it easy to spot where your hours go and providing a clear visual breakdown of your browsing habits .
 
 
 ---
